@@ -358,6 +358,7 @@ namespace DaneHud
         public bool Specials = true;        // kontenery specjalne (Special w nazwie, zawartość w CustomData jak u Isy)
         public string SpecialKw = "Special";
         public bool SpecialSteal = true;    // specjalny o wyższym priorytecie może brać z niższego
+        public string LearnKw = "!learn", LearnManyKw = "!learnMany";   // nauka autocraftingu jak u Isy
         public string OreKw = "Ores", IngotKw = "Ingots", ComponentKw = "Components", ToolKw = "Tools", AmmoKw = "Ammo", BottleKw = "Bottles";
         public string LockedKw = "Locked, Hidden, [No Sorting], [No IIM], !manual, Control Station, Control Seat, Safe Zone";
         public string OrePriority = "Stone, Platinum";   // te rudy najpierw (jak fixedRefiningList u Isy)
@@ -370,7 +371,7 @@ namespace DaneHud
     public class Config
     {
         public int Language = 0;               // 0 = polski, 1 = English
-        public bool Visible = true;            // wszystkie okna (/dane ukryj, /dane pokaz)
+        public bool Visible = true;            // wszystkie okna (/data ukryj, /data pokaz)
         public bool LiveInventory = true;      // "wirtualny terminal": serwer przysyła zawartość ładowni na bieżąco
         public bool PerGrid = true;            // osobne okna dla każdego grida
         public bool Initialized = false;

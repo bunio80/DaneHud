@@ -26,6 +26,7 @@ namespace DaneHud
         public string Warning = "";
         public int Moved, Queued;
         public readonly List<string> Recent = new List<string>();
+        public readonly HashSet<string> Unreachable = new HashSet<string>();   // bloki bez połączenia konwejerem z magazynem
         public readonly Dictionary<string, double> QueuedNow = new Dictionary<string, double>();   // klucz przedmiotu » w kolejce
 
         int cycle;
@@ -62,8 +63,10 @@ namespace DaneHud
             if (m.Uranium && cycle % 6 == 3) Uranium(w, m);
             if (m.Specials && cycle % 4 == 2) Specials(w, m);
             if (m.Sort) Sort(w);
+            if (cycle % 6 == 4) Learn(w, m);
             if (m.Autocraft && cycle % 10 == 5) Autocraft(c, w, m);
             if (cycle % 120 == 0) { Prune(cooldown); Prune(queueCooldown); }
+            if (cycle % 240 == 0) Unreachable.Clear();
         }
 
         /// <summary>Wstałeś z fotela albo wyłączyłeś magazyn: rafinerie znowu same pobierają rudę (działa też, gdy nie grasz).</summary>
@@ -102,6 +105,7 @@ namespace DaneHud
             public MyInventory I;
             public string Name;
             public bool Output;            // wyjście rafinerii/montażowni — przenosić dopiero większe ilości
+            public Func<MyDefinitionId, bool> Keep;   // przedmioty, które mają zostać w bloku (paliwo, lód, ruda w rafinerii)
             public double Fill => (double)I.MaxVolume > 0 ? (double)I.CurrentVolume / (double)I.MaxVolume : 1;
         }
 
@@ -240,6 +244,7 @@ namespace DaneHud
             public readonly List<MyCubeBlock> Generators = new List<MyCubeBlock>();
             public readonly List<MyCubeBlock> Reactors = new List<MyCubeBlock>();
             public readonly List<MyCubeBlock> Assemblers = new List<MyCubeBlock>();
+            public readonly List<MyCubeBlock> AllAssemblers = new List<MyCubeBlock>();
             public readonly List<Special> Specials = new List<Special>();
             readonly string[] locked;
             readonly Dictionary<ItemCat, string> kw;
@@ -280,7 +285,7 @@ namespace DaneHud
                         Sources.Add(x);   // też kontenery typowe — źle odłożone przedmioty wyjdą z nich
                         if (!typed) { }
                     }
-                    else if (b is Ing.IMyShipConnector || b is Ing.IMyShipDrill || b is Ing.IMyShipGrinder || b is Ing.IMyCollector)
+                    else if (b is Ing.IMyShipConnector || b is Ing.IMyShipDrill || b is Ing.IMyShipGrinder || b is Ing.IMyCollector || b is Ing.IMyShipController)
                         Sources.Add(new Inv { Block = b, I = inv0, Name = name });
 
                     var fb = b as Ing.IMyFunctionalBlock;
@@ -288,15 +293,39 @@ namespace DaneHud
                     if (b is Ing.IMyRefinery)
                     {
                         if (b.InventoryCount > 1 && b.GetInventory(1) is MyInventory o) Sources.Add(new Inv { Block = b, I = o, Name = name, Output = true });
+                        // wejście: wynieś to, czego rafineria nie przerobi
+                        var ri = inv0;
+                        Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => ri.CheckConstraint(id) });
                         if (on) Refineries.Add(b);
                     }
-                    else if (b is Ing.IMyAssembler && b.BlockDefinition.Id.TypeId.ToString() != "MyObjectBuilder_SurvivalKit")
+                    else if (b is Ing.IMyAssembler)
                     {
+                        bool kit = b.BlockDefinition.Id.TypeId.ToString() == "MyObjectBuilder_SurvivalKit";
+                        var asm = (Ing.IMyAssembler)b;
                         if (b.InventoryCount > 1 && b.GetInventory(1) is MyInventory o) Sources.Add(new Inv { Block = b, I = o, Name = name, Output = true });
-                        if (on) Assemblers.Add(b);
+                        // sprzątanie montażowni jak u Isy: bezczynna, pusta kolejka — sztabki wracają do magazynu
+                        if (asm.IsQueueEmpty && !asm.IsProducing && asm.Mode == Ing.MyAssemblerMode.Assembly)
+                            Sources.Add(new Inv { Block = b, I = inv0, Name = name });
+                        if (!kit) AllAssemblers.Add(b);
+                        bool learning = name.IndexOf("!learn", StringComparison.OrdinalIgnoreCase) >= 0;
+                        if (on && !kit && !learning) Assemblers.Add(b);
                     }
-                    else if (b is Ing.IMyGasGenerator && on && MakesGas(b)) Generators.Add(b);
-                    else if (b is Ing.IMyReactor && on) Reactors.Add(b);
+                    else if (b is Ing.IMyGasGenerator)
+                    {
+                        if (MakesGas(b))
+                        {
+                            // zostaje lód i butle do napełnienia, reszta wychodzi
+                            Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => id == IceId || IsBottle(id) });
+                            if (on) Generators.Add(b);
+                        }
+                    }
+                    else if (b is Ing.IMyReactor)
+                    {
+                        var rdef = b.BlockDefinition as MyReactorDefinition;
+                        var fuel = rdef?.FuelInfos != null && rdef.FuelInfos.Length > 0 ? rdef.FuelInfos[0].FuelId : default(MyDefinitionId);
+                        Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => id == fuel });
+                        if (on) Reactors.Add(b);
+                    }
                 }
                 Specials.Sort((a, b2) => a.Priority.CompareTo(b2.Priority));
             }
@@ -314,6 +343,12 @@ namespace DaneHud
 
             /// <summary>Skąd brać rudę/lód/sztabki: kontenery typowe, a gdy ich nie ma — wszystkie kontenery.</summary>
             public List<Inv> Storage(ItemCat cat) => Targets(cat) ?? Cargo;
+
+            static bool IsBottle(MyDefinitionId id)
+            {
+                string t = id.TypeId.ToString();
+                return t == "MyObjectBuilder_OxygenContainerObject" || t == "MyObjectBuilder_GasContainerObject";
+            }
 
             static bool MakesGas(MyCubeBlock b)
             {
@@ -338,7 +373,13 @@ namespace DaneHud
             if (cooldown.TryGetValue(key, out var until) && until > DateTime.UtcNow) return 0;
             try
             {
-                if (!((IngInv.IMyInventory)src).CanTransferItemTo(dst, ItemType(id))) return 0;
+                if (!((IngInv.IMyInventory)src).CanTransferItemTo(dst, ItemType(id)))
+                {
+                    // gra (i serwer) nie pozwala przenosić między blokami bez połączenia konwejerem
+                    Unreachable.Add(Ctx.NameOf((MyCubeBlock)src.Entity));
+                    cooldown[key] = DateTime.UtcNow.AddSeconds(30);
+                    return 0;
+                }
                 double fits = (double)dst.ComputeAmountThatFits(id, 0f, 0f);
                 double a = Math.Min(Math.Min(amount, (double)item.Amount), fits);
                 if (!IsFractional(id)) a = Math.Floor(a);
@@ -373,6 +414,7 @@ namespace DaneHud
                     var cat = Ctx.CatOf(id.TypeId.ToString());
                     var targets = w.Targets(cat);
                     if (targets == null || w.IsTyped(src, cat)) continue;
+                    if (src.Keep != null && src.Keep(id)) continue;
                     // z wyjść produkcji co kilka sekund większymi porcjami, nie po 0,4 kg co pół sekundy
                     if (src.Output && src.Fill < 0.5 && (double)item.Amount < (IsFractional(id) ? 100 : 20)) continue;
                     foreach (var dst in targets)
@@ -517,6 +559,51 @@ namespace DaneHud
         {
             try { if (MyDefinitionManager.Static.TryGetBlueprintDefinitionByResultId(item, out var bp)) return bp; } catch { }
             return null;
+        }
+
+        /// <summary>
+        /// Nauka jak u Isy: „!learn” w nazwie montażowni — to, co wrzucisz do jej kolejki, trafia do limitów
+        /// (limit = ilość z kolejki), kolejka jest czyszczona, słowo znika z nazwy. „!learnMany” zostaje i uczy dalej.
+        /// </summary>
+        void Learn(World w, MagazynCfg m)
+        {
+            string one = string.IsNullOrEmpty(m.LearnKw) ? "!learn" : m.LearnKw;
+            string many = string.IsNullOrEmpty(m.LearnManyKw) ? "!learnMany" : m.LearnManyKw;
+            var q = new List<Ing.MyProductionItem>();
+            foreach (var a in w.AllAssemblers)
+            {
+                var asm = (Ing.IMyAssembler)a;
+                string name = asm.CustomName ?? "";
+                bool isMany = name.IndexOf(many, StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isOne = !isMany && name.IndexOf(one, StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!isOne && !isMany) continue;
+                q.Clear();
+                try { asm.GetQueue(q); } catch { continue; }
+                if (q.Count == 0) continue;
+                foreach (var it in q)
+                {
+                    MyBlueprintDefinitionBase bp = null;
+                    try { bp = MyDefinitionManager.Static.GetBlueprintDefinition(it.BlueprintId); } catch { }
+                    if (bp?.Results == null || bp.Results.Length == 0) continue;
+                    var res = bp.Results[0];
+                    string key = res.Id.ToString();
+                    double amount = Math.Round((double)it.Amount * (double)res.Amount);
+                    if (amount <= 0) continue;
+                    var quota = m.Quotas.FirstOrDefault(z => z.Id == key);
+                    if (quota == null) m.Quotas.Add(quota = new Quota { Id = key });
+                    quota.Amount = amount;
+                    Note(T("nauka: ", "learned: ") + Ctx.ItemName(res.Id) + " = " + Fmt.Amount(amount));
+                }
+                try { asm.ClearQueue(); } catch { }
+                if (isOne)
+                    try
+                    {
+                        int i = name.IndexOf(one, StringComparison.OrdinalIgnoreCase);
+                        asm.CustomName = (name.Substring(0, i) + name.Substring(i + one.Length)).Replace("  ", " ").Trim();
+                    }
+                    catch { }
+                Plugin.Cfg?.Save();
+            }
         }
 
         void Autocraft(Ctx c, World w, MagazynCfg m)

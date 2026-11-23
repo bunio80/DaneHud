@@ -1,11 +1,21 @@
 =====================================================================================================
-DaneHud v4 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
+DaneHud v5 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
 =====================================================================================================
 
 Okna z danymi grida, w którym siedzisz, rysowane na HUD (zamiast Automatic LCDs 2 + HudLcd), oraz
 MAGAZYN — części skryptu Isy wykonywane przez plugin, bez programowalnego bloku.
 
-Polecenia czatu: /dane (albo /data) — ustawienia; /dane ukryj | pokaz; /dane pl | en.
+Polecenia czatu: /data — ustawienia; /data ukryj | pokaz; /data pl | en  (stare /dane nadal działa).
+
+Nowe w v5:
+  * Komenda /data (zamiast /dane).
+  * Sortowanie także z innych bloków: kokpity, wejście rafinerii (to, czego nie przerobi), bezczynne montażownie
+    (sztabki wracają do magazynu, jak „assembler cleanup” u Isy), generatory O2/H2 (zostaje lód i butle),
+    reaktory (zostaje paliwo). Bloki bez połączenia konwejerem są wypisane w stanie Magazynu.
+  * Kolejność rud w rafineriach wybierana z listy wszystkich rud w grze (też z modów), bez wpisywania.
+  * Pasek zapełnienia odrobinę niżej (odstęp od napisu).
+  * Nauka autocraftingu jak u Isy: "!learn" w nazwie montażowni + przedmiot w jej kolejce = nowy limit
+    (ilość z kolejki), kolejka czyszczona, słowo usuwane z nazwy; "!learnMany" zostaje i uczy dalej.
 
 Nowe w v4:
   * Kontenery specjalne jak u Isy: "Special" w nazwie, zawartość w CustomData (przedmiot=100 trzyma 100
@@ -33,13 +43,22 @@ Nowe w v3:
   * Krótsze podpisy w oknach, poprawione zużycie H2 silników wodorowych (prąd).
 
 =====================================================================================================
-DaneHud v4 — Pulsar (Legacy) plugin for Space Engineers
+DaneHud v5 — Pulsar (Legacy) plugin for Space Engineers
 =====================================================================================================
 
 Windows with data of the grid you sit in, drawn on the HUD (instead of Automatic LCDs 2 + HudLcd), plus
 STORAGE — parts of Isy's script run by the plugin, without a programmable block.
 
-Chat: /data (or /dane) — settings; /data hide | show; /data pl | en.
+Chat: /data — settings; /data hide | show; /data pl | en.
+
+New in v5:
+  * /data command (instead of /dane).
+  * Sorting from more blocks: cockpits, refinery input (what it cannot process), idle assemblers (ingots go back),
+    O2/H2 generators (ice and bottles stay), reactors (fuel stays). Blocks without a conveyor link are listed.
+  * Refinery ore order picked from a list of all ores in the game (mods too), no typing.
+  * Fill bar slightly lower (gap from the text).
+  * Autocrafting learning like Isy: "!learn" in an assembler name + an item in its queue = new limit (queued amount);
+    the queue is cleared and the word removed; "!learnMany" stays and keeps learning.
 
 New in v4:
   * Special containers like Isy: "Special" in the name, contents in CustomData (item=100 keeps 100 and removes excess,

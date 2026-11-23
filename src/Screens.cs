@@ -109,7 +109,7 @@ namespace DaneHud
         }
     }
 
-    // ====================================================================== główne okno /dane
+    // ====================================================================== główne okno /data
 
     internal class MainScreen : DialogBase
     {
@@ -741,7 +741,7 @@ namespace DaneHud
 
                 case ElementKind.Magazyn:
                     LinesBox(T("Ile ostatnich ruchów:", "How many recent moves:"));
-                    Hint(T("Stan modułu Magazyn (/dane » Magazyn) i co ostatnio przeniósł.", "Storage module state (/data » Storage) and its recent moves."));
+                    Hint(T("Stan modułu Magazyn (/data » Magazyn) i co ostatnio przeniósł.", "Storage module state (/data » Storage) and its recent moves."));
                     break;
 
                 case ElementKind.Queue:

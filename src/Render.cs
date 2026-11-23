@@ -34,7 +34,7 @@ namespace DaneHud
             switch (r.Kind)
             {
                 case RowKind.Space: return lh * 0.6f;
-                case RowKind.Bar: return lh * 0.85f;
+                case RowKind.Bar: return lh * 0.95f;
                 default: return lh;
             }
         }
@@ -187,14 +187,14 @@ namespace DaneHud
                         try { pw = MyGuiManager.MeasureString(font, "100.0%", scale).X + 0.006f; } catch { }
                         float bw = Math.Max(0.02f, width - pw);
                         float bh = lh * 0.5f;
-                        float by = y + (h - bh) / 2f;
+                        float by = y + (h - bh) / 2f + lh * 0.1f;   // odstęp od wiersza nad paskiem
                         var dark = new Color(r.BarColor.R / 5, r.BarColor.G / 5, r.BarColor.B / 5, 170);
                         MyGuiManager.DrawSpriteBatch(Blank, new Vector2(x, by), new Vector2(bw, bh), dark,
                             MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, false, true);
                         if (r.Fraction > 0f)
                             MyGuiManager.DrawSpriteBatch(Blank, new Vector2(x, by), new Vector2(bw * r.Fraction, bh), r.BarColor,
                                 MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, false, true);
-                        Text(font, pct, new Vector2(x + width, y), scale * 0.9f, r.RightColor,
+                        Text(font, pct, new Vector2(x + width, y + lh * 0.1f), scale * 0.9f, r.RightColor,
                             MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP, false, pw);
                         break;
                     }

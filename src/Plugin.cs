@@ -13,7 +13,7 @@ namespace DaneHud
     /// <summary>
     /// DaneHud — okna z danymi grida, w którym siedzisz, rysowane na HUD (zamiast Automatic LCDs 2 + HudLcd):
     /// rudy, sztabki, ładownie, zbiorniki, moc, wodór, ciąg silników, rafinerie (jedna linia), autocrafting Isy.
-    /// /dane = ustawienia (6 okien, każde z własną listą elementów, położeniem, czcionką i kolorami).
+    /// /data = ustawienia (6 okien, każde z własną listą elementów, położeniem, czcionką i kolorami).
     /// </summary>
     internal class Snapshot
     {
@@ -23,7 +23,7 @@ namespace DaneHud
 
     public class Plugin : IPlugin
     {
-        internal const string Version = "4";
+        internal const string Version = "5";
         internal static Config Cfg;
         internal static volatile Snapshot Shown;      // okna i wiersze do narysowania (null = nic)
         internal static bool Seated;
@@ -158,14 +158,14 @@ namespace DaneHud
         {
             if (text == null) return;
             var t = text.Trim().ToLowerInvariant();
-            string cmd = t.StartsWith("/dane") ? "/dane" : t.StartsWith("/data") ? "/data" : null;
+            string cmd = t.StartsWith("/data") ? "/data" : t.StartsWith("/dane") ? "/dane" : null;   // /dane = stary alias
             if (cmd == null || (t.Length > 5 && t[5] != ' ')) return;
             sendToOthers = false;
             var arg = t.Length > 5 ? t.Substring(5).Trim() : "";
             if (arg == "" || arg == "opcje" || arg == "menu")
                 mainThread.Enqueue(OpenConfigDialog);   // po zamknięciu czatu
             else if (arg == "ukryj" || arg == "off" || arg == "hide")
-                mainThread.Enqueue(() => { Cfg.Visible = false; Cfg.Save(); Dirty = true; Chat(L.T("Okna ukryte (/dane pokaz = przywróć).", "Windows hidden (/data show = restore).")); });
+                mainThread.Enqueue(() => { Cfg.Visible = false; Cfg.Save(); Dirty = true; Chat(L.T("Okna ukryte (/data pokaz = przywróć).", "Windows hidden (/data show = restore).")); });
             else if (arg == "pokaz" || arg == "pokaż" || arg == "on" || arg == "show")
                 mainThread.Enqueue(() => { Cfg.Visible = true; Cfg.Save(); Dirty = true; Chat(L.T("Okna widoczne.", "Windows visible.")); });
             else if (arg == "en" || arg == "english")
@@ -173,7 +173,7 @@ namespace DaneHud
             else if (arg == "pl" || arg == "polski")
                 mainThread.Enqueue(() => { Cfg.Language = 0; Cfg.Save(); Dirty = true; Chat("Język: polski."); });
             else
-                Chat(L.T("/dane — ustawienia okien; /dane ukryj — schowaj okna; /dane pokaz — pokaż; /dane en — English.",
+                Chat(L.T("/data — ustawienia okien; /data ukryj — schowaj okna; /data pokaz — pokaż; /data en — English.",
                          "/data — window settings; /data hide — hide windows; /data show — show; /data pl — polski."));
         }
 

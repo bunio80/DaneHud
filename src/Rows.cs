@@ -506,6 +506,8 @@ namespace DaneHud
             Pair(T("Magazyn:", "Storage:"), g.State, string.IsNullOrEmpty(g.Warning) ? value : warn);
             if (!string.IsNullOrEmpty(g.Warning)) Text(g.Warning, warn);
             Pair(T("Przeniesienia / kolejka:", "Moves / queued:"), g.Moved + " / " + g.Queued);
+            if (g.Unreachable.Count > 0)
+                Text(T("Bez konwejera: ", "No conveyor: ") + string.Join(", ", g.Unreachable.Take(4)) + (g.Unreachable.Count > 4 ? " ..." : ""), warn);
             for (int i = 0; i < Limit(e, g.Recent.Count); i++) Text("  " + g.Recent[i], text);
         }
 
@@ -514,7 +516,7 @@ namespace DaneHud
             if (e.FromPlugin)
             {
                 var own = PluginAuto(c);
-                if (own == null) { Text(T("Brak limitów w Magazynie (/dane » Magazyn)", "No limits in Storage (/data » Storage)"), warn); return; }
+                if (own == null) { Text(T("Brak limitów w Magazynie (/data » Magazyn)", "No limits in Storage (/data » Storage)"), warn); return; }
                 AutoRows(e, own);
                 return;
             }

@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Sandbox.Definitions;
+using Sandbox.Graphics;
 using Sandbox.Graphics.GUI;
+using VRage.Game;
 using VRage.Utils;
 using VRageMath;
 
@@ -58,8 +60,9 @@ namespace DaneHud
             // --- rafinerie
             Check(x, y, T("Rafinerie: każda ruda po równo we wszystkich", "Refineries: every ore split equally"), m.Refineries, v => m.Refineries = v); y += row * 0.8f;
             Label(x + 0.035f, y, T("Na czas pracy rafinerie nie pobierają rudy z konwejera (jak Twój Isy v4); gdy wstaniesz — pobierają znowu.", "While running, refineries don't pull ore themselves (like your Isy v4); when you stand up they do again."), 0.62f); y += row * 0.8f;
-            Label(x + 0.035f, y, T("Najpierw rudy:", "Ores first:"), 0.7f);
-            TextBox(x + 0.2f, y, 0.35f, m.OrePriority, 200, v => m.OrePriority = v); y += row;
+            Label(x + 0.035f, y, T("Kolejność rud:", "Ore order:"), 0.7f);
+            string order = string.IsNullOrWhiteSpace(m.OrePriority) ? T("(brak — po równo wg ilości)", "(none — by amount)") : m.OrePriority;
+            Button(x + 0.4f, y, order + "  ...", () => MyGuiSandbox.AddScreen(new OrePriorityScreen(m, () => RecreateControls(false))), 0.42f); y += row;
 
             // --- lód, uran
             Check(x, y, T("Lód do generatorów H2/O2, wypełnienie %:", "Ice into H2/O2 generators, fill %:"), m.Ice, v => m.Ice = v);
@@ -71,7 +74,9 @@ namespace DaneHud
             // --- autocrafting
             Check(x, y, T("Autocrafting wg limitów", "Autocrafting by limits"), m.Autocraft, v => m.Autocraft = v);
             int set = m.Quotas.Count(q => q.Amount > 0);
-            Button(0.2f, y, T($"Limity autocraftingu... ({set})", $"Autocrafting limits... ({set})"), () => MyGuiSandbox.AddScreen(new QuotaScreen(g, () => RecreateControls(false))), 0.3f); y += row;
+            Button(0.2f, y, T($"Limity autocraftingu... ({set})", $"Autocrafting limits... ({set})"), () => MyGuiSandbox.AddScreen(new QuotaScreen(g, () => RecreateControls(false))), 0.3f); y += row * 0.8f;
+            Label(x + 0.035f, y, T("Nauka jak u Isy: \"!learn\" w nazwie montażowni + przedmiot w jej kolejce = nowy limit (\"!learnMany\" uczy dalej).",
+                                   "Learning like Isy: \"!learn\" in an assembler name + item in its queue = new limit (\"!learnMany\" keeps learning)."), 0.62f); y += row * 0.9f;
 
             Label(x, y, T("Przeniesień na sekundę:", "Moves per second:"), 0.7f);
             Number(x + 0.2f, y, 0.08f, m.MovesPerSecond, v => m.MovesPerSecond = (int)Math.Max(2, Math.Min(60, v))); y += row * 1.1f;
@@ -82,6 +87,11 @@ namespace DaneHud
             Label(x, y, T("Stan: ", "State: ") + (!m.Enabled ? T("wyłączony", "off") : !here ? T("usiądź w tym gridzie, żeby ruszył", "sit in this grid to start it") : mg.State)
                 + "   " + T("przeniesienia: ", "moves: ") + mg.Moved + "   " + T("kolejka: ", "queued: ") + mg.Queued, 0.7f); y += row * 0.8f;
             if (!string.IsNullOrEmpty(mg.Warning)) { var l = Label(x, y, mg.Warning, 0.7f); l.ColorMask = new Vector4(1f, 0.35f, 0.35f, 1f); y += row * 0.8f; }
+            if (mg.Unreachable.Count > 0)
+            {
+                var l2 = Label(x, y, T("Bez połączenia konwejerem (nie da się przenieść): ", "Not connected by conveyor (cannot move): ") + string.Join(", ", mg.Unreachable.Take(5)), 0.64f);
+                l2.ColorMask = new Vector4(1f, 0.6f, 0.3f, 1f); y += row * 0.7f;
+            }
             foreach (var r in mg.Recent.Take(3)) { Label(x, y, r, 0.6f); y += row * 0.6f; }
 
             Button(0f, 0.43f, "OK", () => CloseScreen(false), 0.18f, 0.048f);
@@ -97,6 +107,129 @@ namespace DaneHud
         {
             Plugin.Cfg?.Save();
             Plugin.Dirty = true;
+            try { onClose?.Invoke(); } catch { }
+            base.OnClosed();
+        }
+    }
+
+    // ====================================================================== kolejność rud w rafineriach
+
+    internal class OrePriorityScreen : DialogBase
+    {
+        readonly MagazynCfg m;
+        readonly Action onClose;
+        readonly List<string> order;
+        int selAll = -1, selOrder = -1;
+
+        public OrePriorityScreen(MagazynCfg m, Action onClose) : base(new Vector2(0.74f, 0.78f))
+        {
+            this.m = m;
+            this.onClose = onClose;
+            order = (m.OrePriority ?? "").Split(',').Select(z => z.Trim()).Where(z => z.Length > 0).ToList();
+            EnabledBackgroundFade = true;
+            RecreateControls(true);
+        }
+
+        public override string GetFriendlyName() => "DaneHudOreOrder";
+
+        /// <summary>Wszystkie rudy z definicji gry i modów (czytane na bieżąco, nic nie jest wpisane na stałe).</summary>
+        static List<MyPhysicalItemDefinition> AllOres()
+        {
+            try
+            {
+                return MyDefinitionManager.Static.GetPhysicalItemDefinitions()
+                    .Where(d => d != null && d.Public && d.Id.TypeId.ToString() == "MyObjectBuilder_Ore")
+                    .OrderBy(d => d.DisplayNameText).ToList();
+            }
+            catch { return new List<MyPhysicalItemDefinition>(); }
+        }
+
+        static string Show(MyPhysicalItemDefinition d) => (d.DisplayNameText ?? d.Id.SubtypeName) + (d.DisplayNameText == d.Id.SubtypeName ? "" : "  (" + d.Id.SubtypeName + ")");
+
+        MyGuiControlListbox List(float x, float y, IEnumerable<string> items, int sel, Action<int> onSel, Action<int> onDouble)
+        {
+            var lb = new MyGuiControlListbox(new Vector2(x, y), MyGuiControlListboxStyleEnum.Default)
+            {
+                OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP,
+                VisibleRowsCount = 12,
+                MultiSelect = false,
+            };
+            lb.Size = new Vector2(0.3f, lb.Size.Y);
+            int i = 0;
+            foreach (var t in items)
+            {
+                var it = new MyGuiControlListbox.Item(new System.Text.StringBuilder(t), t, null, i);
+                lb.Add(it);
+                if (i == sel) lb.SelectSingleItem(it);
+                i++;
+            }
+            lb.ItemsSelected += l => { if (l.SelectedItems.Count > 0) onSel((int)l.SelectedItems[0].UserData); };
+            lb.ItemDoubleClicked += l => { if (l.SelectedItems.Count > 0) onDouble((int)l.SelectedItems[0].UserData); };
+            Controls.Add(lb);
+            return lb;
+        }
+
+        public override void RecreateControls(bool constructor)
+        {
+            base.RecreateControls(constructor);
+            AddCaption(T("Kolejność rud w rafineriach", "Ore order in refineries"));
+            var all = AllOres();
+            var free = all.Where(d => !order.Contains(d.Id.SubtypeName)).ToList();
+            Label(-0.33f, -0.3f, T("Wszystkie rudy w grze:", "All ores in the game:"), 0.72f);
+            Label(0.03f, -0.3f, T("Kolejność (pierwsza na górze):", "Order (first at the top):"), 0.72f);
+            List(-0.33f, -0.275f, free.Select(Show), selAll, i => selAll = i, i => { selAll = i; Add(free); });
+            List(0.03f, -0.275f, order.Select((o, i) =>
+            {
+                var d = all.FirstOrDefault(z => z.Id.SubtypeName == o);
+                return (i + 1) + ". " + (d != null ? Show(d) : o);
+            }), selOrder, i => selOrder = i, i => { selOrder = i; Remove(); });
+
+            const float by = 0.21f;
+            Button(-0.18f, by, T("Dodaj »", "Add »"), () => Add(free), 0.16f);
+            Button(0.075f, by, T("W górę", "Up"), () => MoveSel(-1), 0.1f);
+            Button(0.18f, by, T("W dół", "Down"), () => MoveSel(1), 0.1f);
+            Button(0.285f, by, T("« Usuń", "« Remove"), Remove, 0.1f);
+            Label(-0.33f, by + 0.05f, T("Dwuklik po lewej = dodaj na koniec kolejki, po prawej = usuń. Rudy spoza listy idą po nich, wg ilości.",
+                                       "Double-click left = add to the end, right = remove. Ores not on the list follow, by amount."), 0.62f);
+            Button(0f, 0.33f, "OK", () => CloseScreen(false), 0.18f, 0.048f);
+        }
+
+        void Add(List<MyPhysicalItemDefinition> free)
+        {
+            if (selAll < 0 || selAll >= free.Count) return;
+            order.Add(free[selAll].Id.SubtypeName);
+            selAll = Math.Min(selAll, free.Count - 2);
+            selOrder = order.Count - 1;
+            Save();
+        }
+
+        void Remove()
+        {
+            if (selOrder < 0 || selOrder >= order.Count) return;
+            order.RemoveAt(selOrder);
+            selOrder = Math.Min(selOrder, order.Count - 1);
+            Save();
+        }
+
+        void MoveSel(int d)
+        {
+            int j = selOrder + d;
+            if (selOrder < 0 || selOrder >= order.Count || j < 0 || j >= order.Count) return;
+            var t = order[selOrder]; order[selOrder] = order[j]; order[j] = t;
+            selOrder = j;
+            Save();
+        }
+
+        void Save()
+        {
+            m.OrePriority = string.Join(", ", order);
+            Plugin.Dirty = true;
+            RecreateControls(false);
+        }
+
+        protected override void OnClosed()
+        {
+            Plugin.Cfg?.Save();
             try { onClose?.Invoke(); } catch { }
             base.OnClosed();
         }
