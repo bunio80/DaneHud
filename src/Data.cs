@@ -384,7 +384,7 @@ namespace DaneHud
         {
             public int Count, Working, Large, Small;
             public double MaxSeconds;
-            /// <summary>Ruda » po ilu sekundach skończy się w rafineriach (kolejka każdej rafinerii po kolei, najdłuższa).</summary>
+            /// <summary>Ruda » ile sekund zajmie przerobienie tylko tej rudy (najdłużej w jednej rafinerii, bez czekania w kolejce).</summary>
             public readonly Dictionary<string, double> OreSeconds = new Dictionary<string, double>();
             public readonly Dictionary<string, double> Ores = new Dictionary<string, double>();
         }
@@ -434,6 +434,7 @@ namespace DaneHud
                 var inv = b.GetInventory(0);
                 if (inv == null) continue;
                 double secs = 0;
+                var own = new Dictionary<string, double>();   // czas samej rudy w tej rafinerii
                 foreach (var it in inv.GetItems())
                 {
                     var id = new MyDefinitionId(it.Content.TypeId, it.Content.SubtypeId);
@@ -445,13 +446,17 @@ namespace DaneHud
                     if (bp == null || speed <= 0) continue;
                     double per = (double)(float)bp.Prerequisites[0].Amount;
                     if (per <= 0) continue;
-                    secs += amount / per * bp.BaseProductionTimeInSeconds / speed;
-                    if (enabled)
-                    {
-                        r.OreSeconds.TryGetValue(id.SubtypeName, out var done);
-                        if (secs > done) r.OreSeconds[id.SubtypeName] = secs;
-                    }
+                    double t = amount / per * bp.BaseProductionTimeInSeconds / speed;
+                    secs += t;
+                    own.TryGetValue(id.SubtypeName, out var o);
+                    own[id.SubtypeName] = o + t;
                 }
+                if (enabled)
+                    foreach (var kv in own)
+                    {
+                        r.OreSeconds.TryGetValue(kv.Key, out var done);
+                        if (kv.Value > done) r.OreSeconds[kv.Key] = kv.Value;
+                    }
                 if (b is Ing.IMyFunctionalBlock fb && !fb.Enabled) continue;
                 if (secs > r.MaxSeconds) r.MaxSeconds = secs;
             }

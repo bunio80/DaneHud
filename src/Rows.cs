@@ -467,7 +467,7 @@ namespace DaneHud
             else head += r.Large > 0 ? "  L" : "  S";
             if (r.Ores.Count == 0) { Pair(head, T("puste", "empty"), warn); return; }
             Pair(head, Fmt.TimeShort(r.MaxSeconds));
-            // 2. linia: każda ruda i po jakim czasie się skończy (najpierw ta, która skończy się pierwsza)
+            // 2. linia: każda ruda i ile czasu zajmie jej przerobienie (najkrótsza pierwsza)
             var list = r.Ores.Keys
                 .Select(k => (k, s: r.OreSeconds.TryGetValue(k, out var v) ? v : double.NaN))
                 .OrderBy(x => double.IsNaN(x.s) ? double.MaxValue : x.s)
