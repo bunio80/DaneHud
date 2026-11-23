@@ -303,6 +303,8 @@ namespace DaneHud
             public readonly List<Inv> Sources = new List<Inv>();         // skąd sortować
             public readonly List<MyCubeBlock> Refineries = new List<MyCubeBlock>();
             public readonly List<MyCubeBlock> Generators = new List<MyCubeBlock>();
+            public readonly List<MyCubeBlock> Tanks = new List<MyCubeBlock>();          // zbiorniki O2/H2 (napełnianie butli)
+            public readonly HashSet<long> DockedGrids = new HashSet<long>();
             public readonly List<MyCubeBlock> Reactors = new List<MyCubeBlock>();
             public readonly List<MyCubeBlock> Assemblers = new List<MyCubeBlock>();
             public readonly List<MyCubeBlock> AllAssemblers = new List<MyCubeBlock>();
@@ -320,8 +322,39 @@ namespace DaneHud
                 };
                 foreach (var k in kw.Keys) Typed[k] = new List<Inv>();
 
+                var docked = m.Docked ? DockedBlocks(c) : new List<MyCubeBlock>();
+                foreach (var d in docked) DockedGrids.Add(d.CubeGrid.EntityId);
+                foreach (var b in docked.OrderBy(Ctx.NameOf, StringComparer.OrdinalIgnoreCase))
+                {
+                    // statek zadokowany do bazy (jak u Isy): wszystko z jego ładowni, konektorów, wierteł i kokpitów
+                    // idzie do kontenerów bazy; reaktory i generatory oddają tylko to, czego nie zużyją
+                    if (b.InventoryCount == 0 || !b.IsFunctional) continue;
+                    string name = Ctx.NameOf(b);
+                    if (IsLocked(name)) continue;
+                    if (!string.IsNullOrEmpty(m.SpecialKw) && name.IndexOf(m.SpecialKw, StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                    var inv0 = b.GetInventory(0) as MyInventory;
+                    if (inv0 == null) continue;
+                    if (b is Ing.IMyCargoContainer || b is Ing.IMyShipConnector || b is Ing.IMyShipDrill || b is Ing.IMyShipGrinder || b is Ing.IMyCollector || b is Ing.IMyShipController)
+                        Sources.Add(new Inv { Block = b, I = inv0, Name = name });
+                    else if (b is Ing.IMyGasGenerator && MakesGas(b))
+                        Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => id == IceId });
+                    else if (b is Ing.IMyReactor)
+                    {
+                        var rd = b.BlockDefinition as MyReactorDefinition;
+                        var f = rd?.FuelInfos != null && rd.FuelInfos.Length > 0 ? rd.FuelInfos[0].FuelId : default(MyDefinitionId);
+                        Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => id == f });
+                    }
+                }
+
                 foreach (var b in c.Blocks.OrderBy(Ctx.NameOf, StringComparer.OrdinalIgnoreCase))
                 {
+                    if (b is Ing.IMyGasTank tank && b.IsFunctional && !IsLocked(Ctx.NameOf(b)) && b.InventoryCount > 0)
+                    {
+                        Tanks.Add(b);
+                        // butle w zbiorniku: pełne wychodzą (sortowanie), niepełne czekają na napełnienie
+                        if (b.GetInventory(0) is MyInventory ti) Sources.Add(new Inv { Block = b, I = ti, Name = Ctx.NameOf(b), Keep = id => !IsBottle(id) });
+                        continue;
+                    }
                     if (b.InventoryCount == 0 || !b.IsFunctional) continue;
                     string name = Ctx.NameOf(b);
                     if (IsLocked(name)) continue;
@@ -375,8 +408,8 @@ namespace DaneHud
                     {
                         if (MakesGas(b))
                         {
-                            // zostaje lód i butle do napełnienia, reszta wychodzi
-                            Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => id == IceId || IsBottle(id) });
+                            // zostaje lód; butle: niepełne czekają na napełnienie, pełne wychodzą (patrz Sort)
+                            Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => id == IceId });
                             if (on) Generators.Add(b);
                         }
                     }
@@ -418,7 +451,51 @@ namespace DaneHud
             /// <summary>Skąd brać rudę/lód/sztabki: kontenery typowe, a gdy ich nie ma — wszystkie kontenery.</summary>
             public List<Inv> Storage(ItemCat cat) => Targets(cat) ?? Cargo;
 
-            static bool IsBottle(MyDefinitionId id)
+            /// <summary>
+            /// Bloki gridów zadokowanych konektorem (grupa logiczna minus grupa mechaniczna bazy), jak GridTerminalSystem u Isy.
+            /// Pomija: grid za konektorem z [No Sorting] / [No IIM] w nazwie (po dowolnej stronie), grid z tym słowem w nazwie,
+            /// bloki, do których gracz nie ma dostępu.
+            /// </summary>
+            static List<MyCubeBlock> DockedBlocks(Ctx c)
+            {
+                var res = new List<MyCubeBlock>();
+                var logical = new List<VRage.Game.ModAPI.IMyCubeGrid>();
+                try { Sandbox.ModAPI.MyAPIGateway.GridGroups.GetGroup(c.Grid, VRage.Game.ModAPI.GridLinkTypeEnum.Logical, logical); } catch { return res; }
+                var main = new HashSet<long>(c.Grids.Select(g => g.EntityId));
+                var others = logical.OfType<MyCubeGrid>().Where(g => !main.Contains(g.EntityId)).ToList();
+                if (others.Count == 0) return res;
+                Func<string, bool> excl = n => n != null && (n.IndexOf("[No Sorting]", StringComparison.OrdinalIgnoreCase) >= 0 || n.IndexOf("[No IIM]", StringComparison.OrdinalIgnoreCase) >= 0);
+                var skip = new HashSet<long>();
+                foreach (var g in logical.OfType<MyCubeGrid>())
+                {
+                    if (!main.Contains(g.EntityId) && excl(g.DisplayName)) skip.Add(g.EntityId);
+                    foreach (var con in g.GetFatBlocks().OfType<Sandbox.ModAPI.IMyShipConnector>())
+                    {
+                        if (con.Status != Ing.MyShipConnectorStatus.Connected || con.OtherConnector == null || !excl(con.CustomName)) continue;
+                        // wyklucz stronę, która nie jest bazą
+                        var other = main.Contains(con.CubeGrid.EntityId) ? con.OtherConnector.CubeGrid : con.CubeGrid;
+                        if (main.Contains(other.EntityId)) continue;
+                        var mech = new List<VRage.Game.ModAPI.IMyCubeGrid>();
+                        try { Sandbox.ModAPI.MyAPIGateway.GridGroups.GetGroup(other, VRage.Game.ModAPI.GridLinkTypeEnum.Mechanical, mech); } catch { }
+                        skip.Add(other.EntityId);
+                        foreach (var x in mech) skip.Add(x.EntityId);
+                    }
+                }
+                long me = Sandbox.ModAPI.MyAPIGateway.Session?.Player?.IdentityId ?? 0;
+                foreach (var g in others)
+                {
+                    if (skip.Contains(g.EntityId)) continue;
+                    foreach (var b in g.GetFatBlocks())
+                    {
+                        if (b == null || b.Closed || !b.HasInventory) continue;
+                        if (b is Sandbox.ModAPI.IMyTerminalBlock tb && me != 0 && !tb.HasPlayerAccess(me)) continue;
+                        res.Add(b);
+                    }
+                }
+                return res;
+            }
+
+            internal static bool IsBottle(MyDefinitionId id)
             {
                 string t = id.TypeId.ToString();
                 return t == "MyObjectBuilder_OxygenContainerObject" || t == "MyObjectBuilder_GasContainerObject";
@@ -476,8 +553,41 @@ namespace DaneHud
 
         // ------------------------------------------------------------------ sortowanie
 
+        /// <summary>Poziom gazu w butli (0..1); -1 = to nie butla.</summary>
+        static double GasLevel(MyPhysicalInventoryItem item) =>
+            item.Content is Sandbox.Common.ObjectBuilders.Definitions.MyObjectBuilder_GasContainerObject g ? g.GasLevel : -1;
+
+        /// <summary>
+        /// Gdzie napełnić butlę (jak u Isy): najpierw zbiornik z tym samym gazem, który ma gaz i miejsce (włączamy mu
+        /// „Auto-Refill Bottles”), potem generator O2/H2 z lodem (włączamy „Auto-Refill”). null = nie ma gdzie.
+        /// </summary>
+        MyCubeBlock BottleFiller(World w, MyDefinitionId bottle)
+        {
+            bool hydrogen = bottle.TypeId.ToString() == "MyObjectBuilder_GasContainerObject";
+            foreach (var b in w.Tanks)
+            {
+                if (!(b is Ing.IMyGasTank t) || !t.Enabled) continue;
+                bool h2 = (b.BlockDefinition.Id.SubtypeName ?? "").IndexOf("Hydrogen", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (h2 != hydrogen || t.FilledRatio <= 0.01) continue;
+                var inv = b.GetInventory(0) as MyInventory;
+                if (inv == null || (double)(inv.MaxVolume - inv.CurrentVolume) < 0.12) continue;
+                if (b is Sandbox.ModAPI.IMyGasTank mt && !mt.AutoRefillBottles) try { mt.AutoRefillBottles = true; } catch { }
+                return b;
+            }
+            foreach (var b in w.Generators)
+            {
+                var inv = b.GetInventory(0) as MyInventory;
+                if (inv == null || (double)inv.GetItemAmount(IceId) <= 100) continue;
+                if ((double)(inv.MaxVolume - inv.CurrentVolume) < 0.12) continue;
+                if (b is Sandbox.ModAPI.IMyGasGenerator g && !g.AutoRefill) try { g.AutoRefill = true; } catch { }
+                return b;
+            }
+            return null;
+        }
+
         void Sort(World w)
         {
+            var fillers = new Dictionary<MyDefinitionId, MyCubeBlock>();
             foreach (var src in w.Sources)
             {
                 if (budget <= 0) return;
@@ -486,12 +596,33 @@ namespace DaneHud
                     if (budget <= 0) return;
                     var id = new MyDefinitionId(item.Content.TypeId, item.Content.SubtypeId);
                     var cat = Ctx.CatOf(id.TypeId.ToString());
+
+                    // butle (jak u Isy): niepełna do zbiornika / generatora, który ją napełni; pełna do kontenera Bottles
+                    if (cat == ItemCat.Bottle && Plugin.ActiveProfile?.Magazyn?.FillBottles != false)
+                    {
+                        double lvl = GasLevel(item);
+                        if (lvl >= 0 && lvl < 0.99)
+                        {
+                            if (!fillers.TryGetValue(id, out var filler)) fillers[id] = filler = BottleFiller(w, id);
+                            if (filler != null)
+                            {
+                                if (src.Block == filler) continue;                      // napełnia się — czekamy
+                                var fi = filler.GetInventory(0) as MyInventory;
+                                if (fi != null) Move(src.I, item, fi, 1, T("napełnianie butli", "filling bottle"));
+                                continue;
+                            }
+                            // nie ma gdzie napełnić: zostaw w zbiorniku/generatorze, z innych miejsc normalnie do kontenera
+                            if (src.Block is Ing.IMyGasTank || src.Block is Ing.IMyGasGenerator) continue;
+                        }
+                    }
                     var targets = w.Targets(cat);
                     // wyjście produkcji opróżniamy zawsze: bez kontenera danego typu — do zwykłych kontenerów (najpierw bez słowa typu)
                     if (targets == null && src.Output)
                         targets = w.Cargo.Where(x => !w.Typed.Values.Any(l => l.Contains(x))).Concat(w.Cargo).Distinct().ToList();
                     if (targets == null || targets.Count == 0 || w.IsTyped(src, cat)) continue;
                     if (src.Keep != null && src.Keep(id)) continue;
+                    // zbiorniki i generatory: zostaw butle, gdy napełnianie wyłączone (gra sama je tam napełnia)
+                    if (cat == ItemCat.Bottle && Plugin.ActiveProfile?.Magazyn?.FillBottles == false && (src.Block is Ing.IMyGasTank || src.Block is Ing.IMyGasGenerator)) continue;
                     // z wyjść produkcji co kilka sekund większymi porcjami, nie po 0,4 kg co pół sekundy —
                     // tylko komponenty i sztabki (robione masowo); butle, narzędzia, amunicja wychodzą od razu
                     if (src.Output && src.Fill < 0.5 && (cat == ItemCat.Component || cat == ItemCat.Ingot)

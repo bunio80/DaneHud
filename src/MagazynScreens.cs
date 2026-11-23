@@ -42,7 +42,8 @@ namespace DaneHud
             Label(x + 0.035f, y, T("Działa, gdy siedzisz w tym gridzie. Wyłącz wtedy PB Isy (inaczej będą się kłócić).", "Works while you sit in this grid. Turn Isy's PB off then (or they will fight)."), 0.64f); y += row;
 
             // --- sortowanie
-            Check(x, y, T("Sortowanie do kontenerów ze słowem w nazwie", "Sort into containers with a keyword in the name"), m.Sort, v => m.Sort = v); y += row;
+            Check(x, y, T("Sortowanie do kontenerów ze słowem w nazwie", "Sort into containers with a keyword in the name"), m.Sort, v => m.Sort = v);
+            Check(x + 0.5f, y, T("też z zadokowanych gridów", "also from docked grids"), m.Docked, v => m.Docked = v); y += row;
             Kw(x + 0.035f, y, T("Rudy", "Ores"), m.OreKw, v => m.OreKw = v);
             Kw(x + 0.28f, y, T("Sztabki", "Ingots"), m.IngotKw, v => m.IngotKw = v);
             Kw(x + 0.525f, y, T("Komponenty", "Components"), m.ComponentKw, v => m.ComponentKw = v); y += row;
@@ -85,7 +86,8 @@ namespace DaneHud
 
             // --- lód, uran
             Check(x, y, T("Lód do generatorów H2/O2, wypełnienie %:", "Ice into H2/O2 generators, fill %:"), m.Ice, v => m.Ice = v);
-            Number(x + 0.45f, y, 0.08f, m.IceFillPct, v => m.IceFillPct = (int)Math.Max(5, Math.Min(100, v))); y += row;
+            Number(x + 0.45f, y, 0.08f, m.IceFillPct, v => m.IceFillPct = (int)Math.Max(5, Math.Min(100, v)));
+            Check(x + 0.58f, y, T("napełniaj butle", "fill bottles"), m.FillBottles, v => m.FillBottles = v); y += row;
             Check(x, y, T("Uran do reaktorów: duże / małe:", "Uranium into reactors: large / small:"), m.Uranium, v => m.Uranium = v);
             Number(x + 0.45f, y, 0.08f, m.UraniumLarge, v => m.UraniumLarge = Math.Max(0, v));
             Number(x + 0.54f, y, 0.08f, m.UraniumSmall, v => m.UraniumSmall = Math.Max(0, v)); y += row;

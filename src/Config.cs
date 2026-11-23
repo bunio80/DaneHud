@@ -362,6 +362,8 @@ namespace DaneHud
         public bool Sort = true;            // sortowanie do kontenerów Ores/Ingots/Components/Tools/Ammo/Bottles
         public bool Refineries = true;      // równy podział rudy w rafineriach
         public bool Ice = true;             // lód do generatorów H2/O2
+        public bool FillBottles = true;     // jak u Isy: niepełne butle do zbiornika / generatora, pełne do kontenera Bottles
+        public bool Docked = true;          // jak u Isy: sortuj też z gridów zadokowanych konektorem (bez [No Sorting] / [No IIM])
         public bool Uranium = true;         // uran do reaktorów
         public bool Autocraft = false;      // autocrafting wg limitów
         public bool Specials = true;        // kontenery specjalne (Special w nazwie, zawartość w CustomData jak u Isy)
