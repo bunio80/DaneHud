@@ -461,10 +461,19 @@ namespace DaneHud
         {
             var r = c.Refinery;
             if (r.Count == 0) { Text(T("Rafinerie: brak", "Refineries: none"), text); return; }
-            string head = (r.Working < r.Count && r.Working > 0 ? $"{r.Working}/{r.Count}" : r.Count.ToString()) + T("x Rafinerie", "x Refineries");
+            // 1. linia: ile rafinerii (duże / małe osobno) i ogólny czas pracy
+            string head = (r.Working < r.Count && r.Working > 0 ? $"{r.Working}/{r.Count}" : r.Count.ToString()) + T(" Rafinerie", " Refineries");
+            if (r.Large > 0 && r.Small > 0) head += $"  {r.Large}L {r.Small}S";
+            else head += r.Large > 0 ? "  L" : "  S";
             if (r.Ores.Count == 0) { Pair(head, T("puste", "empty"), warn); return; }
-            string ores = string.Join(" ", r.Ores.OrderByDescending(kv => kv.Value).Select(kv => Fmt.Symbol(kv.Key)));
-            Pair(head + "  " + Fmt.TimeShort(r.MaxSeconds), ores);
+            Pair(head, Fmt.TimeShort(r.MaxSeconds));
+            // 2. linia: każda ruda i po jakim czasie się skończy (najpierw ta, która skończy się pierwsza)
+            var list = r.Ores.Keys
+                .Select(k => (k, s: r.OreSeconds.TryGetValue(k, out var v) ? v : double.NaN))
+                .OrderBy(x => double.IsNaN(x.s) ? double.MaxValue : x.s)
+                .Select(x => Fmt.Symbol(x.k) + " " + (double.IsNaN(x.s) ? "-" : Fmt.TimeShort(x.s))).ToList();
+            for (int i = 0; i < list.Count; i += 4)
+                Text("  " + string.Join("   ", list.Skip(i).Take(4)), text);
         }
 
         void Queue(ElementCfg e, Ctx c)

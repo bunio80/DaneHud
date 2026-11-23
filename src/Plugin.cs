@@ -23,7 +23,7 @@ namespace DaneHud
 
     public class Plugin : IPlugin
     {
-        internal const string Version = "11";
+        internal const string Version = "12";
         internal static Config Cfg;
         internal static volatile Snapshot Shown;      // okna i wiersze do narysowania (null = nic)
         internal static bool Seated;

@@ -382,8 +382,10 @@ namespace DaneHud
 
         public class RefineryInfo
         {
-            public int Count, Working;
+            public int Count, Working, Large, Small;
             public double MaxSeconds;
+            /// <summary>Ruda » po ilu sekundach skończy się w rafineriach (kolejka każdej rafinerii po kolei, najdłuższa).</summary>
+            public readonly Dictionary<string, double> OreSeconds = new Dictionary<string, double>();
             public readonly Dictionary<string, double> Ores = new Dictionary<string, double>();
         }
 
@@ -422,7 +424,9 @@ namespace DaneHud
                 var def = b.BlockDefinition as MyRefineryDefinition;
                 if (def == null) continue;
                 r.Count++;
+                if (b.CubeGrid.GridSize > 1f) r.Large++; else r.Small++;
                 if (ref_.IsWorking && ref_.IsProducing) r.Working++;
+                bool enabled = !(b is Ing.IMyFunctionalBlock fe) || fe.Enabled;
 
                 float prod = 0f;
                 try { if (b.UpgradeValues.TryGetValue("Productivity", out var pv)) prod = pv; } catch { }
@@ -442,6 +446,11 @@ namespace DaneHud
                     double per = (double)(float)bp.Prerequisites[0].Amount;
                     if (per <= 0) continue;
                     secs += amount / per * bp.BaseProductionTimeInSeconds / speed;
+                    if (enabled)
+                    {
+                        r.OreSeconds.TryGetValue(id.SubtypeName, out var done);
+                        if (secs > done) r.OreSeconds[id.SubtypeName] = secs;
+                    }
                 }
                 if (b is Ing.IMyFunctionalBlock fb && !fb.Enabled) continue;
                 if (secs > r.MaxSeconds) r.MaxSeconds = secs;
