@@ -104,6 +104,7 @@ namespace DaneHud
                 case ElementKind.Distance: Distance(e, c); break;
                 case ElementKind.Property: Property(e, c); break;
                 case ElementKind.Queue: Queue(e, c); break;
+                case ElementKind.Magazyn: MagazynState(e); break;
             }
         }
 
@@ -240,7 +241,7 @@ namespace DaneHud
             var p = c.Power;
             double prodNoBatt = p.ProdCur - p.BattOut;
             double maxNoBatt = p.ProdMax - p.BattMaxOut;
-            Pair(T("Produkcja prądu:", "Power production:"), Fmt.Power(prodNoBatt) + " / " + Fmt.Power(maxNoBatt));
+            Pair(T("Produkcja prądu:", "Power output:"), Fmt.Power(prodNoBatt) + " / " + Fmt.Power(maxNoBatt));
             if (p.BattOut > 0.0001) Pair(T("Z baterii:", "From batteries:"), Fmt.Power(p.BattOut));
             if (p.Ions > 0) Pair(T($"Silniki jonowe ({p.Ions}):", $"Ion thrusters ({p.Ions}):"), Fmt.Power(p.IonCur) + " / " + Fmt.Power(p.IonMax));
             if (p.Atmos > 0) Pair(T($"Silniki atmosf. ({p.Atmos}):", $"Atmo thrusters ({p.Atmos}):"), Fmt.Power(p.AtmoCur) + " / " + Fmt.Power(p.AtmoMax));
@@ -261,17 +262,17 @@ namespace DaneHud
             var p = c.Power;
             c.Tanks("Hydrogen", out var stored, out var cap, out var tanks);
             if (p.Generators == 0 && p.H2Thrusters == 0 && p.Engines == 0 && tanks == 0) return;
-            if (p.Generators > 0) Pair(T($"Wodór z generatorów ({p.Generators}):", $"H2 from generators ({p.Generators}):"), Fmt.Rate(p.GenH2Cur) + " / " + Fmt.Rate(p.GenH2Max));
-            if (p.H2Thrusters > 0) Pair(T($"Silniki wodorowe ({p.H2Thrusters}):", $"Hydrogen thrusters ({p.H2Thrusters}):"), Fmt.Rate(p.ThrH2Cur) + " / " + Fmt.Rate(p.ThrH2Max));
-            if (p.Engines > 0) Pair(T("Generatory prądu H2:", "H2 power engines:"), Fmt.Rate(p.EngH2Cur) + " / " + Fmt.Rate(p.EngH2Max));
+            if (p.Generators > 0) Pair(T($"Generatory H2 ({p.Generators}):", $"H2 generators ({p.Generators}):"), Fmt.Rate(p.GenH2Cur) + " / " + Fmt.Rate(p.GenH2Max));
+            if (p.H2Thrusters > 0) Pair(T($"Silniki wodorowe ({p.H2Thrusters}):", $"H2 thrusters ({p.H2Thrusters}):"), Fmt.Rate(p.ThrH2Cur) + " / " + Fmt.Rate(p.ThrH2Max));
+            if (p.Engines > 0) Pair(T("Silniki H2 (prąd):", "H2 engines (power):"), Fmt.Rate(p.EngH2Cur));
             double use = p.ThrH2Cur + p.EngH2Cur;
             double bal = p.GenH2Cur - use;
-            if (p.Generators > 0 || use > 0) Pair(T("Bilans wodoru:", "Hydrogen balance:"), (bal >= 0 ? "+" : "") + Fmt.Rate(bal), bal < -0.001 ? warn : good);
+            if (p.Generators > 0 || use > 0) Pair(T("Bilans wodoru:", "H2 balance:"), (bal >= 0 ? "+" : "") + Fmt.Rate(bal), bal < -0.001 ? warn : good);
             if (tanks > 0)
             {
                 Pair(T($"Zbiorniki H2 ({tanks}):", $"H2 tanks ({tanks}):"), Fmt.Pct(cap > 0 ? stored / cap : 0) + "  " + Fmt.Volume(stored));
-                if (bal < -0.001) Pair(T("Wodoru starczy na:", "Hydrogen lasts:"), Fmt.Time(stored / -bal), stored / -bal < 300 ? warn : value);
-                double maxUse = p.ThrH2Max + p.EngH2Max - p.GenH2Max;
+                if (bal < -0.001) Pair(T("Wodoru starczy na:", "H2 lasts:"), Fmt.Time(stored / -bal), stored / -bal < 300 ? warn : value);
+                double maxUse = p.ThrH2Max + p.EngH2Cur - p.GenH2Max;
                 if (maxUse > 0.001 && p.H2Thrusters > 0) Pair(T("Na pełnym ciągu:", "At full thrust:"), Fmt.Time(stored / maxUse));
             }
         }
@@ -474,10 +475,56 @@ namespace DaneHud
             if (e.MaxLines > 0 && q.Count > e.MaxLines) Text(T($"  ... i jeszcze {q.Count - e.MaxLines}", $"  ... and {q.Count - e.MaxLines} more"), text);
         }
 
+        /// <summary>Wpisy autocraftingu z limitów Magazynu (pluginu) — format jak u Isy.</summary>
+        static List<AutoEntry> PluginAuto(Ctx c)
+        {
+            var m = Plugin.ActiveProfile?.Magazyn;
+            if (m == null || m.Quotas == null || m.Quotas.Count == 0) return null;
+            var items = c.Items(false);
+            var res = new List<AutoEntry>();
+            foreach (var q in m.Quotas.Where(x => x.Amount > 0))
+            {
+                if (!VRage.Game.MyDefinitionId.TryParse(q.Id, out var id)) continue;
+                items.TryGetValue(q.Id, out var have);
+                double cur = have?.Amount ?? 0;
+                Magazyn.I.QueuedNow.TryGetValue(q.Id, out var queued);
+                res.Add(new AutoEntry
+                {
+                    Name = Ctx.ItemName(id), Current = Math.Floor(cur), Wanted = q.Amount,
+                    Op = cur > q.Amount ? ">" : cur < q.Amount ? "<" : "=",
+                    Extra = queued > 0 ? "+" + Fmt.Amount(queued) : "",
+                });
+            }
+            return res.OrderBy(a => a.Name).ToList();
+        }
+
+        void MagazynState(ElementCfg e)
+        {
+            var m = Plugin.ActiveProfile?.Magazyn;
+            var g = Magazyn.I;
+            if (m == null || !m.Enabled) { Pair(T("Magazyn:", "Storage:"), T("wyłączony", "off")); return; }
+            Pair(T("Magazyn:", "Storage:"), g.State, string.IsNullOrEmpty(g.Warning) ? value : warn);
+            if (!string.IsNullOrEmpty(g.Warning)) Text(g.Warning, warn);
+            Pair(T("Przeniesienia / kolejka:", "Moves / queued:"), g.Moved + " / " + g.Queued);
+            for (int i = 0; i < Limit(e, g.Recent.Count); i++) Text("  " + g.Recent[i], text);
+        }
+
         void Autocrafting(ElementCfg e, Ctx c)
         {
+            if (e.FromPlugin)
+            {
+                var own = PluginAuto(c);
+                if (own == null) { Text(T("Brak limitów w Magazynie (/dane » Magazyn)", "No limits in Storage (/data » Storage)"), warn); return; }
+                AutoRows(e, own);
+                return;
+            }
             var list = c.Autocrafting(e.Text);
             if (list == null) { Text(T("Brak LCD z '", "No LCD with '") + e.Text + T("' w nazwie", "' in name"), warn); return; }
+            AutoRows(e, list);
+        }
+
+        void AutoRows(ElementCfg e, List<AutoEntry> list)
+        {
             IEnumerable<AutoEntry> src = list;
             if (e.OnlyMissing) src = src.Where(a => a.Current < a.Wanted);
             var all = src.ToList();
@@ -658,8 +705,8 @@ namespace DaneHud
                     case ElementKind.PowerSummary: b.Pair(T("Moc:", "Power:"), "134.3 MW / 2.7 GW"); break;
                     case ElementKind.PowerTime: b.Pair(T("Czas baterii:", "Battery time:"), "1h 54m 47s"); break;
                     case ElementKind.PowerDetails: b.Pair(T("Reaktory (4):", "Reactors (4):"), "66.5 MW / 2.5 GW"); b.Pair(T("Razem:", "Total:"), "115.7 MW / 2.7 GW"); break;
-                    case ElementKind.PowerBalance: b.Pair(T("Produkcja prądu:", "Power production:"), "66.5 MW / 2.5 GW"); b.Pair(T("Silniki jonowe (24):", "Ion thrusters (24):"), "12 MW / 80 MW"); break;
-                    case ElementKind.HydrogenBalance: b.Pair(T("Bilans wodoru:", "Hydrogen balance:"), "-1.2 kL/s", b.warn); break;
+                    case ElementKind.PowerBalance: b.Pair(T("Produkcja prądu:", "Power output:"), "66.5 MW / 2.5 GW"); b.Pair(T("Silniki jonowe (24):", "Ion thrusters (24):"), "12 MW / 80 MW"); break;
+                    case ElementKind.HydrogenBalance: b.Pair(T("Bilans wodoru:", "H2 balance:"), "-1.2 kL/s", b.warn); break;
                     case ElementKind.Thrust: b.Pair(T("Masa statku:", "Ship mass:"), "1.2 kt"); b.Pair(Ctx.DirNames[2] + ":", "24 MN  20 m/s²  2.04x"); break;
                     case ElementKind.Refineries: b.Pair(T("10x Rafinerie  5h 12m", "10x Refineries  5h 12m"), "U Ag Si Ni"); break;
                     case ElementKind.Autocrafting:

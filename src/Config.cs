@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Xml.Serialization;
 using VRage.Utils;
 using VRageMath;
@@ -39,6 +40,7 @@ namespace DaneHud
         Distance,        // odległość do punktu GPS (Distance / Pos)
         Property,        // wartość opcji bloku z terminala (Prop)
         Queue,           // kolejka montażowni
+        Magazyn,         // stan modułu Magazyn (zamiast Isy)
     }
 
     public enum ItemCat { Ore, Ingot, Component, Ammo, Tool, Bottle, Consumable, Other, All }
@@ -61,6 +63,7 @@ namespace DaneHud
         public bool AlignNumbers = true;  // tekst LCD: liczby po ":" do prawej
         public bool Compact = false;      // ciąg: tylko przód i góra
         public bool OnlyCargo = false;    // listy: liczyć tylko kontenery
+        public bool FromPlugin = false;   // autocrafting: limity z Magazynu (pluginu) zamiast z LCD Isy
 
         // --- wersja 2: polecenia z Automatic LCDs 2
         public string Filter = "";        // bloki: tekst w nazwie, G:grupa, Typ:rodzaj, * = wszystkie
@@ -100,6 +103,7 @@ namespace DaneHud
                 case ElementKind.Distance: e.Text = "GPS:Baza:0:0:0:"; break;
                 case ElementKind.Property: e.Filter = "Connector"; e.Property = "OnOff"; break;
                 case ElementKind.Queue: e.Filter = "*"; e.MaxLines = 10; break;
+                case ElementKind.Magazyn: e.MaxLines = 5; break;
             }
             return e;
         }
@@ -110,7 +114,7 @@ namespace DaneHud
             ElementKind.Header, ElementKind.Blank, ElementKind.Items, ElementKind.CargoBar, ElementKind.Tank, ElementKind.Amount,
             ElementKind.PowerSummary, ElementKind.PowerTime, ElementKind.PowerDetails, ElementKind.PowerBalance, ElementKind.PowerUsed,
             ElementKind.Charge, ElementKind.HydrogenBalance, ElementKind.Oxygen, ElementKind.Thrust, ElementKind.Ship, ElementKind.Docked,
-            ElementKind.Refineries, ElementKind.Queue, ElementKind.Autocrafting, ElementKind.Working, ElementKind.Count, ElementKind.Damage,
+            ElementKind.Refineries, ElementKind.Queue, ElementKind.Autocrafting, ElementKind.Magazyn, ElementKind.Working, ElementKind.Count, ElementKind.Damage,
             ElementKind.Details, ElementKind.CustomData, ElementKind.Property, ElementKind.LcdText, ElementKind.Clock, ElementKind.Distance,
         };
 
@@ -147,6 +151,7 @@ namespace DaneHud
                 case ElementKind.Distance: return L.T("Odległość do GPS (Distance)", "Distance to GPS");
                 case ElementKind.Property: return L.T("Opcja bloku (Prop)", "Block property (Prop)");
                 case ElementKind.Queue: return L.T("Kolejka montażowni", "Assembler queue");
+                case ElementKind.Magazyn: return L.T("Magazyn: stan i ostatnie ruchy", "Storage: status and recent moves");
             }
             return k.ToString();
         }
@@ -179,7 +184,7 @@ namespace DaneHud
                 case ElementKind.Items: return s + ": " + CatName(Category) + f + (Hidden.Count > 0 ? L.T($" (ukryte {Hidden.Count})", $" ({Hidden.Count} hidden)") : "");
                 case ElementKind.CargoBar: return s + ": " + Label + (string.IsNullOrEmpty(Text) ? L.T(" (wszystkie)", " (all)") : " [" + Text + "]");
                 case ElementKind.Tank: return s + ": " + (Gas == "Oxygen" ? L.T("tlen", "oxygen") : L.T("wodór", "hydrogen"));
-                case ElementKind.Autocrafting: return s + (Parts > 1 ? L.T($" część {Part + 1}/{Parts}", $" part {Part + 1}/{Parts}") : L.T(" (całość)", " (all)"));
+                case ElementKind.Autocrafting: return s + (FromPlugin ? L.T(" [Magazyn]", " [Storage]") : "") + (Parts > 1 ? L.T($" część {Part + 1}/{Parts}", $" part {Part + 1}/{Parts}") : L.T(" (całość)", " (all)"));
                 case ElementKind.LcdText: return s + ": [" + Text + "]";
                 case ElementKind.Details: return s + f + (string.IsNullOrEmpty(StartText) ? "" : " {" + StartText + "}") + (MaxLines > 0 ? " " + MaxLines : "");
                 case ElementKind.Property: return s + f + " " + Property;
@@ -214,6 +219,8 @@ namespace DaneHud
         public float LineSpacing = 1f; // odstęp wierszy (mnożnik)
         public int Font = 1;           // 0 = zwykła, 1 = z cieniem, 2 = stała szerokość
         public int BgAlpha = 0;        // tło: 0 = brak, 255 = pełne
+        public int Style = 0;          // 0 zwykły, 1 pogrubiony, 2 bardzo gruby, 3 obrys, 4 pogrubiony + obrys, 5 cień
+        public string OutlineColor = "000000";
         public string TitleColor = "FFFFFF";
         public string TextColor = "FFFFFF";
         public string ValueColor = "FFFFFF";
@@ -224,6 +231,11 @@ namespace DaneHud
 
         internal static readonly string[] FontIds = { "White", "Debug", "Monospace" };
         internal static string[] FontNames => new[] { L.T("Zwykła", "Normal"), L.T("Z cieniem", "Shadow"), L.T("Stała szerokość", "Monospace") };
+        internal static string[] StyleNames => new[]
+        {
+            L.T("Zwykły", "Normal"), L.T("Pogrubiony", "Bold"), L.T("Bardzo gruby", "Extra bold"),
+            L.T("Obrys", "Outline"), L.T("Pogrubiony + obrys", "Bold + outline"), L.T("Cień", "Drop shadow"),
+        };
         internal string FontId => FontIds[Math.Max(0, Math.Min(FontIds.Length - 1, Font))];
 
         internal static Color ParseColor(string hex, Color fallback)
@@ -324,6 +336,32 @@ namespace DaneHud
         public string GridName = "";
         public DateTime LastUsed = DateTime.Now;
         public List<WindowCfg> Windows = new List<WindowCfg>();
+        public MagazynCfg Magazyn = new MagazynCfg();
+    }
+
+    /// <summary>Limit autocraftingu: ile sztuk przedmiotu ma być w gridzie.</summary>
+    public class Quota
+    {
+        public string Id = "";       // np. MyObjectBuilder_Component/SteelPlate
+        public double Amount;
+    }
+
+    /// <summary>Magazyn — części skryptu Isy wykonywane przez plugin (gdy siedzisz w gridzie).</summary>
+    public class MagazynCfg
+    {
+        public bool Enabled = false;
+        public bool Sort = true;            // sortowanie do kontenerów Ores/Ingots/Components/Tools/Ammo/Bottles
+        public bool Refineries = true;      // równy podział rudy w rafineriach
+        public bool Ice = true;             // lód do generatorów H2/O2
+        public bool Uranium = true;         // uran do reaktorów
+        public bool Autocraft = false;      // autocrafting wg limitów
+        public string OreKw = "Ores", IngotKw = "Ingots", ComponentKw = "Components", ToolKw = "Tools", AmmoKw = "Ammo", BottleKw = "Bottles";
+        public string LockedKw = "Locked, Hidden, [No Sorting], [No IIM], !manual, Control Station, Control Seat, Safe Zone";
+        public string OrePriority = "Stone, Platinum";   // te rudy najpierw (jak fixedRefiningList u Isy)
+        public int IceFillPct = 50;         // ile % objętości generatora wypełnić lodem
+        public double UraniumLarge = 200, UraniumSmall = 50;
+        public int MovesPerSecond = 8;     // ile przeniesień na sekundę (mniej = mniejszy ruch w sieci)
+        public List<Quota> Quotas = new List<Quota>();
     }
 
     public class Config
@@ -373,6 +411,8 @@ namespace DaneHud
             {
                 if (g.Windows == null) g.Windows = new List<WindowCfg>();
                 if (g.GridName == null) g.GridName = "";
+                if (g.Magazyn == null) g.Magazyn = new MagazynCfg();
+                if (g.Magazyn.Quotas == null) g.Magazyn.Quotas = new List<Quota>();
                 FixWindows(g.Windows);
             }
             if (RefreshTicks < 10) RefreshTicks = 30;
@@ -414,9 +454,18 @@ namespace DaneHud
             }
         }
 
+        // gra testowa (narzędzie SeTest) ma własny plik ustawień, żeby testy nie ruszały ustawień gracza
+        static readonly bool TestRun = DetectTestRun();
+
+        static bool DetectTestRun()
+        {
+            try { return (System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "").IndexOf(@"\SE_Test\", StringComparison.OrdinalIgnoreCase) >= 0; }
+            catch { return false; }
+        }
+
         static string FilePath => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "SpaceEngineers", "Plugins", "DaneHud.xml");
+            "SpaceEngineers", "Plugins", TestRun ? "DaneHud_test.xml" : "DaneHud.xml");
 
         public static Config Load()
         {

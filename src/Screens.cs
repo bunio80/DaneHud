@@ -196,8 +196,8 @@ namespace DaneHud
             sources.AddRange(srcProfiles.Select(ProfileName));
             loadIdx = Math.Min(loadIdx, sources.Count - 1);
             Label(lx, y, T("Wczytaj okna z:", "Load windows from:"), 0.75f);
-            Combo(lx + 0.14f, y, 0.42f, sources, loadIdx, v => loadIdx = v);
-            Button(0.22f, y, T("Wczytaj (zastąp)", "Load (replace)"), () =>
+            Combo(lx + 0.14f, y, 0.48f, sources, loadIdx, v => loadIdx = v);
+            Button(0.335f, y, T("Wczytaj (zastąp)", "Load (replace)"), () =>
             {
                 List<WindowCfg> src;
                 int k = loadIdx;
@@ -209,7 +209,7 @@ namespace DaneHud
                 target.Clear();
                 target.AddRange(copy);
                 sel = 0; selElem = -1; Redraw();
-            }, 0.2f);
+            }, 0.22f);
 
             // ---------------------------------------------------------------- wybór okna
             y += 0.06f;
@@ -255,30 +255,32 @@ namespace DaneHud
             Check(lx, y, T("Pokaż tytuł:", "Show title:"), win.ShowTitle, v => win.ShowTitle = v);
             TextBox(lx + 0.15f, y, 0.27f, win.Title, 60, v => win.Title = v); y += row;
             Label(lx, y, T("Czcionka:", "Font:"), 0.72f);
-            Combo(lx + 0.15f, y, 0.27f, WindowCfg.FontNames, win.Font, v => win.Font = v); y += row * 1.15f;
+            Combo(lx + 0.15f, y, 0.27f, WindowCfg.FontNames, win.Font, v => win.Font = v); y += row;
+            Label(lx, y, T("Styl tekstu:", "Text style:"), 0.72f);
+            Combo(lx + 0.15f, y, 0.27f, WindowCfg.StyleNames, win.Style, v => win.Style = v); y += row * 1.15f;
 
             int idx = sel;
-            Button(-0.23f, y, T("Położenie, rozmiar, tło...", "Position, size, background..."), () => MyGuiSandbox.AddScreen(new LayoutScreen(cfg, win, idx)), 0.32f); y += row * 1.1f;
-
-            Label(lx, y, T("Kolory:", "Colors:"), 0.72f); y += row * 0.9f;
-            ColorButton(-0.372f, y, T("Tytuł/nagłówki", "Title/headers"), () => win.TitleColor, v => win.TitleColor = v);
-            ColorButton(-0.23f, y, T("Tekst", "Text"), () => win.TextColor, v => win.TextColor = v);
-            ColorButton(-0.088f, y, T("Liczby", "Numbers"), () => win.ValueColor, v => win.ValueColor = v); y += row;
-            ColorButton(-0.372f, y, T("Paski", "Bars"), () => win.BarColor, v => win.BarColor = v);
-            ColorButton(-0.23f, y, T("Ostrzeżenia", "Warnings"), () => win.WarnColor, v => win.WarnColor = v);
-            ColorButton(-0.088f, y, T("Tło", "Background"), () => win.BgColor, v => win.BgColor = v); y += row * 1.2f;
-
+            Button(-0.335f, y, T("Położenie, rozmiar, tło...", "Position, size, background..."), () => MyGuiSandbox.AddScreen(new LayoutScreen(cfg, win, idx)), 0.205f);
             if (sel < WindowCfg.DefaultCount)
-                Button(-0.23f, y, T("Przywróć domyślne okno ", "Restore default window ") + (sel + 1), () =>
+                Button(-0.125f, y, T("Przywróć domyślne okno ", "Restore default window ") + (sel + 1), () =>
                 {
                     Wins[sel] = WindowCfg.Default(sel);
                     selElem = -1; Redraw();
-                }, 0.32f);
-            y += row * 1.2f;
+                }, 0.205f);
+            y += row * 1.1f;
+
+            Label(lx, y, T("Kolory:", "Colors:"), 0.72f); y += row * 0.9f;
+            ColorButton(-0.39f, y, T("Tytuł/nagłówki", "Title/headers"), () => win.TitleColor, v => win.TitleColor = v);
+            ColorButton(-0.285f, y, T("Tekst", "Text"), () => win.TextColor, v => win.TextColor = v);
+            ColorButton(-0.18f, y, T("Liczby", "Numbers"), () => win.ValueColor, v => win.ValueColor = v);
+            ColorButton(-0.075f, y, T("Paski", "Bars"), () => win.BarColor, v => win.BarColor = v); y += row;
+            ColorButton(-0.39f, y, T("Ostrzeżenia", "Warnings"), () => win.WarnColor, v => win.WarnColor = v);
+            ColorButton(-0.285f, y, T("Tło", "Background"), () => win.BgColor, v => win.BgColor = v);
+            ColorButton(-0.18f, y, T("Obrys / cień", "Outline / shadow"), () => win.OutlineColor, v => win.OutlineColor = v); y += row * 1.2f;
 
             Check(lx, y, T("Ładownie na żywo (wirtualny terminal)", "Live cargo (virtual terminal)"), cfg.LiveInventory, v => cfg.LiveInventory = v); y += row * 0.75f;
-            Label(lx + 0.035f, y, T("Serwer przysyła zawartość ładowni jak przy otwartym K.", "The server sends cargo contents as if K was open."), 0.6f); y += row * 0.5f;
-            Label(lx + 0.035f, y, T("Wyłączone: dane odświeżą się dopiero po otwarciu terminala.", "Off: data refreshes only after opening the terminal."), 0.6f);
+            Label(lx + 0.035f, y, T("Serwer przysyła zawartość ładowni jak przy otwartym K.", "The server sends cargo contents as if K was open."), 0.64f); y += row * 0.5f;
+            Label(lx + 0.035f, y, T("Wyłączone: dane odświeżą się dopiero po otwarciu terminala.", "Off: data refreshes only after opening the terminal."), 0.64f);
 
             // ---------------------------------------------------------------- elementy okna (prawa kolumna)
             const float rx = 0.02f;
@@ -327,14 +329,20 @@ namespace DaneHud
                 Redraw();
             }, 0.11f);
             by += 0.04f;
-            Label(rx, by, T("Dwuklik na elemencie = jego opcje. Nowy element trafia pod zaznaczony.", "Double-click an element = its options. New elements go below the selected one."), 0.58f);
+            Label(rx, by, T("Dwuklik na elemencie = jego opcje. Nowy element trafia pod zaznaczony.", "Double-click an element = its options. New elements go below the selected one."), 0.62f);
+            by += 0.06f;
+            if (editing != null)
+                Button(0.235f, by, T("Magazyn (zamiast Isy): sortowanie, rafinerie, autocrafting...", "Storage (instead of Isy): sorting, refineries, autocrafting..."),
+                    () => MyGuiSandbox.AddScreen(new MagazynScreen(editing, () => RecreateControls(false))), 0.43f, 0.048f);
+            else
+                Label(rx, by, T("Magazyn (zamiast Isy): wybierz u góry ustawienia grida.", "Storage (instead of Isy): pick a grid's settings at the top."), 0.64f);
 
             Button(0f, 0.43f, T("Zapisz", "Save"), () => { cfg.Save(); Plugin.Dirty = true; CloseScreen(false); }, 0.22f, 0.05f);
         }
 
         void ColorButton(float x, float y, string name, Func<string> get, Action<string> set)
         {
-            Button(x, y, name, () => MyGuiSandbox.AddScreen(new ColorScreen(name, get, set)), 0.135f);
+            Button(x, y, name, () => MyGuiSandbox.AddScreen(new ColorScreen(name, get, set)), 0.1f);
         }
 
         void Move(int d)
@@ -523,7 +531,7 @@ namespace DaneHud
 
         public override string GetFriendlyName() => "DaneHudElement";
 
-        void Hint(string s) { Label(x, y, s, 0.6f); y += 0.028f; }
+        void Hint(string s) { Label(x, y, s, 0.64f); y += 0.028f; }
         void Gap() => y += row * 0.4f;
 
         void FilterBox(string label = null)
@@ -606,6 +614,7 @@ namespace DaneHud
                     }); y += row;
                     C(T("Tylko braki (obecnie < chciane)", "Only missing (current < wanted)"), e.OnlyMissing, v => e.OnlyMissing = v);
                     C(T("Nazwy z gry zamiast nazw skryptu", "Game names instead of script names"), e.GameNames, v => e.GameNames = v);
+                    C(T("Limity z Magazynu (pluginu), nie z LCD Isy", "Limits from Storage (plugin), not Isy's LCD"), e.FromPlugin, v => e.FromPlugin = v);
                     Hint(T("Dane czytane z LCD skryptu Isy (\"Autocrafting\", \"Autocrafting 2\"...).", "Read from Isy's script LCDs (\"Autocrafting\", \"Autocrafting 2\"...)."));
                     Hint(T("Długa lista: dwa okna, część 1 z 2 i część 2 z 2.", "Long list: two windows, part 1 of 2 and part 2 of 2."));
                     break;
@@ -728,6 +737,11 @@ namespace DaneHud
                     Hint(T("Nazwy opcji: OnOff, Override, Velocity, UpperLimit, Radius, ...", "Property ids: OnOff, Override, Velocity, UpperLimit, Radius, ..."));
                     LabelBox();
                     LinesBox();
+                    break;
+
+                case ElementKind.Magazyn:
+                    LinesBox(T("Ile ostatnich ruchów:", "How many recent moves:"));
+                    Hint(T("Stan modułu Magazyn (/dane » Magazyn) i co ostatnio przeniósł.", "Storage module state (/data » Storage) and its recent moves."));
                     break;
 
                 case ElementKind.Queue:

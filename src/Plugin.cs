@@ -23,12 +23,14 @@ namespace DaneHud
 
     public class Plugin : IPlugin
     {
-        internal const string Version = "2";
+        internal const string Version = "3";
         internal static Config Cfg;
         internal static volatile Snapshot Shown;      // okna i wiersze do narysowania (null = nic)
         internal static bool Seated;
         internal static long GridId;                  // grid, w którym ostatnio siedziałeś
         internal static string GridName = "";
+        internal static GridProfile ActiveProfile;    // profil grida, w którym siedzisz (null = szablon)
+        long magazynGrid;
         internal static volatile bool Dirty;
 
         static readonly ConcurrentQueue<Action> mainThread = new ConcurrentQueue<Action>();
@@ -48,7 +50,7 @@ namespace DaneHud
             MyGuiSandbox.AddScreen(new MainScreen(Cfg ?? (Cfg = Config.Load())));
         }
 
-        public void Dispose() => Unhook();
+        public void Dispose() { Magazyn.I.Release(); Unhook(); }
 
         public void Update()
         {
@@ -78,27 +80,47 @@ namespace DaneHud
             Ctx ctx = null;
             try { ctx = Ctx.Collect(); } catch (Exception e) { LogOnce("collect", e); }
             Seated = ctx != null;
-            if (ctx == null || !Cfg.Visible)
+            if (ctx == null)
             {
                 Shown = null;
+                ActiveProfile = null;
                 VirtualTerminal.EntityId = 0;
+                Magazyn.I.Release();
                 return;
             }
 
             GridId = ctx.Grid.EntityId;
             GridName = ctx.Grid.CustomName ?? "";
             var profile = Cfg.PerGrid ? Cfg.FindProfile(GridId, GridName) : null;
+            ActiveProfile = profile;
+
+            // magazyn (części Isy) — działa także przy ukrytych oknach
+            var mag = profile?.Magazyn;
+            bool magOn = mag != null && mag.Enabled;
+            if (magOn)
+            {
+                if (magazynGrid != GridId) { Magazyn.I.Release(); magazynGrid = GridId; }
+                try { Magazyn.I.Run(ctx, mag); } catch (Exception e) { LogOnce("magazyn", e); }
+            }
+            else Magazyn.I.Release();
+
+            if (!Cfg.Visible)
+            {
+                Shown = null;
+                VirtualTerminal.EntityId = magOn && Cfg.LiveInventory && MyAPIGateway.Multiplayer != null && !MyAPIGateway.Multiplayer.IsServer ? ctx.Controller.EntityId : 0;
+                return;
+            }
             var windows = profile != null ? profile.Windows : Cfg.Windows;
 
             var rows = new List<Row>[windows.Count];
-            bool needInv = false;
+            bool needInv = magOn;
             for (int i = 0; i < windows.Count; i++)
             {
                 var w = windows[i];
                 if (!w.Enabled) continue;
                 foreach (var e in w.Elements)
                     if (e.Kind == ElementKind.Items || e.Kind == ElementKind.CargoBar || e.Kind == ElementKind.Refineries ||
-                        e.Kind == ElementKind.PowerTime || e.Kind == ElementKind.Amount)
+                        e.Kind == ElementKind.PowerTime || e.Kind == ElementKind.Amount || e.Kind == ElementKind.Autocrafting)
                         needInv = true;
                 try { rows[i] = RowBuilder.Build(w, ctx); }
                 catch (Exception e) { LogOnce("rows" + i, e); }
@@ -121,6 +143,7 @@ namespace DaneHud
 
         void Unhook()
         {
+            Magazyn.I.Release();
             VirtualTerminal.EntityId = 0;
             Seated = false;
             Shown = null;

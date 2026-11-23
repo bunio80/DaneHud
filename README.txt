@@ -1,78 +1,48 @@
 =====================================================================================================
-DaneHud v2 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
+DaneHud v3 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
 =====================================================================================================
 
-Okna z danymi grida, w którym siedzisz (kokpit / fotel / zdalne sterowanie), rysowane na HUD.
-Zastępuje Automatic LCDs 2 + mod HudLcd, czyta też autocrafting Isy z jego LCD.
-Gdy wstaniesz z fotela, okna znikają. Dane tylko z tego grida i podgridów na rotorach/tłokach.
+Okna z danymi grida, w którym siedzisz, rysowane na HUD (zamiast Automatic LCDs 2 + HudLcd), oraz
+MAGAZYN — części skryptu Isy wykonywane przez plugin, bez programowalnego bloku.
 
-Polecenia czatu (/dane albo /data):
-  /dane          — ustawienia
-  /dane ukryj    — schowaj wszystkie okna
-  /dane pokaz    — pokaż
-  /dane en       — język angielski, /dane pl — polski (też w menu)
+Polecenia czatu: /dane (albo /data) — ustawienia; /dane ukryj | pokaz; /dane pl | en.
 
-Nowe w v2:
-  * Osobne okna dla każdego grida. Statek bojowy, koparka i baza mają własne zestawy okien.
-    Siedzisz w gridzie i otwierasz /dane: edytujesz okna TEGO grida (za pierwszym razem kopia szablonu).
-    Szablon = okna gridów bez własnych ustawień. Przyciski: „Zapisz jako szablon”, „Usuń ustawienia grida”,
-    „Wczytaj okna z:” (domyślne fabryczne, szablon albo inny grid). Grid jest rozpoznawany po Id,
-    a gdy Id się zmieni (wklejony na nowo) — po nazwie.
-  * Dowolna liczba okien: Nowe okno / Duplikuj / Usuń okno.
-  * Polecenia z Automatic LCDs 2 jako elementy okna:
-      Details (informacje bloku z terminala: NoN, X, od linii, do linii, ile linii)
-        np. DetailsNoNX {[A] Shield Controller} {CapHp:} 2
-      CustomData, Working (stan bloków), Count, Damage, Charge (napędy skokowe, baterie),
-      Oxygen (ciśnienie, farmy), Amount (amunicja/uran/lód w blokach), PowerUsed, Time/Date,
-      Distance (do GPS), Prop (opcja bloku), Docked, lot (prędkość, przyspieszenie, wysokość,
-      grawitacja, masa, droga hamowania, tłumiki, pozycja), kolejka montażowni.
-      Inventory z filtrem bloków (InvList), minimum i „tylko braki” (Missing), paski.
-      Tekst do lewej / środka / prawej (Echo / Center / Right).
-  * Filtr bloków jak w LCDs 2: tekst w nazwie, G:grupa, Typ:rodzaj (Typ:Refinery, Typ:Jump), * = wszystkie.
-  * Menu poprawione: nic nie nachodzi, długie nazwy w oknach są skracane zamiast wchodzić na liczby.
-  * Paliwo reaktorów w kg/t zamiast „1.5 k kg”.
-
-Ustawienia: %AppData%\SpaceEngineers\Plugins\DaneHud.xml (kopia .bak przy każdym zapisie).
-Ustawienia z v1 zostają i stają się szablonem. Błędy: DaneHud.log w tym samym folderze.
-
-Ładownie na żywo (wirtualny terminal): serwer przysyła klientowi zawartość kontenerów tylko przy otwartym
-terminalu. Plugin zgłasza serwerowi to samo, co K na kokpicie, więc listy i paski się odświeżają.
+Nowe w v3:
+  * Styl tekstu okna: zwykły, pogrubiony, bardzo gruby, obrys, pogrubiony + obrys, cień
+    (gra ma tylko 3 czcionki bez wersji pogrubionych — pogrubienie i obrys rysuje plugin).
+    Kolor obrysu/cienia w kolorach okna.
+  * MAGAZYN (/dane → przycisk „Magazyn (zamiast Isy)” w ustawieniach grida):
+      - sortowanie do kontenerów ze słowem w nazwie: Ores, Ingots, Components, Tools, Ammo, Bottles
+        (te same słowa co u Isy — nazwy kontenerów zostają),
+      - rafinerie: każda ruda po równo we wszystkich (jak Twój Isy v4), priorytet rud (Stone, Platinum),
+      - lód do generatorów H2/O2 (% wypełnienia), uran do reaktorów (duże / małe),
+      - autocrafting wg limitów: montażownie dostają brakujące sztuki; limity wpisujesz w oknie
+        „Limity autocraftingu” albo importujesz z LCD „Autocrafting” Isy jednym przyciskiem,
+      - element HUD „Magazyn: stan i ostatnie ruchy”, autocrafting na HUD może brać limity z Magazynu.
+    Magazyn działa, gdy siedzisz w gridzie (jak /asort w modzie Inventory Sorter). Przenosi przedmioty
+    tak jak gracz w terminalu — serwer sprawdza uprawnienia i połączenie konwejerem. Gdy działa PB Isy,
+    magazyn czeka (żeby się nie kłócić). Rafinerie na czas pracy nie pobierają rudy z konwejera;
+    gdy wstaniesz z fotela, pobierają znowu (żeby pracowały też, gdy nie grasz).
+  * Krótsze podpisy w oknach, poprawione zużycie H2 silników wodorowych (prąd).
 
 =====================================================================================================
-DaneHud v2 — Pulsar (Legacy) plugin for Space Engineers
+DaneHud v3 — Pulsar (Legacy) plugin for Space Engineers
 =====================================================================================================
 
-Windows with data of the grid you are sitting in (cockpit / seat / remote control), drawn on the HUD.
-Replaces Automatic LCDs 2 + the HudLcd mod and also reads Isy's autocrafting LCD.
-The windows disappear when you leave the seat. Data comes only from that grid and its rotor/piston subgrids.
+Windows with data of the grid you sit in, drawn on the HUD (instead of Automatic LCDs 2 + HudLcd), plus
+STORAGE — parts of Isy's script run by the plugin, without a programmable block.
 
-Chat commands (/data or /dane):
-  /data          — settings
-  /data hide     — hide all windows
-  /data show     — show them again
-  /data pl       — Polish, /data en — English (also in the menu)
+Chat: /data (or /dane) — settings; /data hide | show; /data pl | en.
 
-New in v2:
-  * Separate windows for each grid: a warship, a miner and a base each keep their own window set.
-    Sitting in a grid and opening /data edits THAT grid's windows (the first time it copies the template).
-    Template = windows of grids without their own settings. Buttons: "Save as template",
-    "Delete grid settings", "Load windows from:" (factory defaults, template or another grid).
-    A grid is recognised by its Id, or by its name when the Id changes (re-pasted grid).
-  * Any number of windows: New window / Duplicate / Delete window.
-  * Automatic LCDs 2 commands as window elements:
-      Details (terminal block info: NoN, X, start line, stop line, line count)
-        e.g. DetailsNoNX {[A] Shield Controller} {CapHp:} 2
-      CustomData, Working (block status), Count, Damage, Charge (jump drives, batteries),
-      Oxygen (pressure, farms), Amount (ammo/uranium/ice in blocks), PowerUsed, Time/Date,
-      Distance (to a GPS), Prop (block property), Docked, flight (speed, acceleration, altitude,
-      gravity, mass, stopping distance, dampeners, position), assembler queue.
-      Inventory with a block filter (InvList), minimum and "only missing" (Missing), bars.
-      Text left / centred / right (Echo / Center / Right).
-  * Block filter like LCDs 2: text in the name, G:group, Type:kind (Type:Refinery, Type:Jump), * = all.
-  * Fixed menu layout; long names in windows are shortened instead of overlapping the numbers.
-
-Settings: %AppData%\SpaceEngineers\Plugins\DaneHud.xml (a .bak copy on every save).
-v1 settings are kept and become the template. Errors: DaneHud.log in the same folder.
-
-Live cargo (virtual terminal): the server sends container contents to a client only while the terminal is
-open. The plugin tells the server the same thing as pressing K in the cockpit, so lists and bars stay live.
+New in v3:
+  * Window text style: normal, bold, extra bold, outline, bold + outline, drop shadow
+    (the game has only 3 fonts without bold variants — bold and outline are drawn by the plugin).
+  * STORAGE (/data → "Storage (instead of Isy)" button in a grid's settings):
+      - sorting into containers with a keyword: Ores, Ingots, Components, Tools, Ammo, Bottles (Isy's words),
+      - refineries: every ore split equally, ore priority (Stone, Platinum),
+      - ice into H2/O2 generators (fill %), uranium into reactors (large / small),
+      - autocrafting by limits; limits typed in "Autocrafting limits" or imported from Isy's "Autocrafting" LCD,
+      - HUD element "Storage: status and recent moves"; HUD autocrafting can use Storage limits.
+    Storage runs while you sit in the grid. It moves items like a player in the terminal (the server checks
+    access and conveyor connection). It waits while Isy's PB runs. Refineries don't pull ore themselves while
+    it runs; when you stand up they do again (so they keep working while you are offline).

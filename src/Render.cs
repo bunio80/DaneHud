@@ -67,11 +67,60 @@ namespace DaneHud
             return r;
         }
 
+        // ------------------------------------------------------------------ styl tekstu (gra nie ma pogrubionych czcionek)
+
+        static int style;          // 0 zwykły, 1 pogrubiony, 2 bardzo gruby, 3 obrys, 4 pogrubiony + obrys, 5 cień
+        static Color outline;
+        static Vector2 px;         // przesunięcie o piksel (w jednostkach GUI)
+
+        static readonly Vector2[] Ring =
+        {
+            new Vector2(-1, -1), new Vector2(0, -1), new Vector2(1, -1), new Vector2(-1, 0),
+            new Vector2(1, 0), new Vector2(-1, 1), new Vector2(0, 1), new Vector2(1, 1),
+        };
+
+        static void Text(string font, string s, Vector2 p, float scale, Color c, MyGuiDrawAlignEnum a, bool full, float maxW)
+        {
+            if (string.IsNullOrEmpty(s)) return;
+            var oc = outline; oc.A = c.A;
+            var dx = new Vector2(px.X, 0f);
+            switch (style)
+            {
+                case 1:
+                    MyGuiManager.DrawString(font, s, p + dx, scale, c, a, full, maxW);
+                    break;
+                case 2:
+                    MyGuiManager.DrawString(font, s, p + dx, scale, c, a, full, maxW);
+                    MyGuiManager.DrawString(font, s, p + new Vector2(0f, px.Y), scale, c, a, full, maxW);
+                    MyGuiManager.DrawString(font, s, p + px, scale, c, a, full, maxW);
+                    break;
+                case 3:
+                    foreach (var r in Ring) MyGuiManager.DrawString(font, s, p + r * px, scale, oc, a, full, maxW);
+                    break;
+                case 4:
+                    foreach (var r in Ring)
+                    {
+                        MyGuiManager.DrawString(font, s, p + r * px, scale, oc, a, full, maxW);
+                        if (r.X > 0) MyGuiManager.DrawString(font, s, p + dx + r * px, scale, oc, a, full, maxW);
+                    }
+                    MyGuiManager.DrawString(font, s, p + dx, scale, c, a, full, maxW);
+                    break;
+                case 5:
+                    MyGuiManager.DrawString(font, s, p + px * 1.5f, scale, oc, a, full, maxW);
+                    break;
+            }
+            MyGuiManager.DrawString(font, s, p, scale, c, a, full, maxW);
+        }
+
         public static void Draw(WindowCfg w, List<Row> rows)
         {
             if (rows == null) return;
             string font = w.FontId;
             float scale = w.Scale;
+            style = w.Style;
+            outline = WindowCfg.ParseColor(w.OutlineColor, Color.Black);
+            try { px = MyGuiManager.GetNormalizedSizeFromScreenSize(Vector2.One) * Math.Max(1f, (float)Math.Round(scale * 1.6f)); }
+            catch { px = new Vector2(0.0006f, 0.001f); }
             float lh = LineH(w);
             float width = Clamp(w.Width, 0.05f, 1.2f);
 
@@ -96,7 +145,7 @@ namespace DaneHud
 
             if (title)
             {
-                MyGuiManager.DrawString(font, w.Title, new Vector2(x, y), scale * 1.1f,
+                Text(font, w.Title, new Vector2(x, y), scale * 1.1f,
                     WindowCfg.ParseColor(w.TitleColor, Color.White), MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, false, width);
                 y += lh * 1.35f;
             }
@@ -108,13 +157,13 @@ namespace DaneHud
                 {
                     case RowKind.Text:
                         if (r.AlignRight)
-                            MyGuiManager.DrawString(font, r.Left ?? "", new Vector2(x + width, y), scale, r.LeftColor,
+                            Text(font, r.Left ?? "", new Vector2(x + width, y), scale, r.LeftColor,
                                 MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP, false, width);
                         else if (r.Center)
-                            MyGuiManager.DrawString(font, r.Left ?? "", new Vector2(x + width / 2f, y), scale, r.LeftColor,
+                            Text(font, r.Left ?? "", new Vector2(x + width / 2f, y), scale, r.LeftColor,
                                 MyGuiDrawAlignEnum.HORISONTAL_CENTER_AND_VERTICAL_TOP, false, width);
                         else
-                            MyGuiManager.DrawString(font, r.Left ?? "", new Vector2(x, y), scale, r.LeftColor,
+                            Text(font, r.Left ?? "", new Vector2(x, y), scale, r.LeftColor,
                                 MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, false, width);
                         break;
 
@@ -123,10 +172,10 @@ namespace DaneHud
                         string rt = r.Right ?? "";
                         float rw = 0f;
                         try { rw = MyGuiManager.MeasureString(font, rt, scale).X; } catch { }
-                        MyGuiManager.DrawString(font, rt, new Vector2(x + width, y), scale, r.RightColor,
+                        Text(font, rt, new Vector2(x + width, y), scale, r.RightColor,
                             MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP, false, width);
                         float lw = Math.Max(0.01f, width - rw - 0.008f);
-                        MyGuiManager.DrawString(font, Fit(font, r.Left ?? "", scale, lw), new Vector2(x, y), scale, r.LeftColor,
+                        Text(font, Fit(font, r.Left ?? "", scale, lw), new Vector2(x, y), scale, r.LeftColor,
                             MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, false, lw);
                         break;
                     }
@@ -145,7 +194,7 @@ namespace DaneHud
                         if (r.Fraction > 0f)
                             MyGuiManager.DrawSpriteBatch(Blank, new Vector2(x, by), new Vector2(bw * r.Fraction, bh), r.BarColor,
                                 MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, false, true);
-                        MyGuiManager.DrawString(font, pct, new Vector2(x + width, y), scale * 0.9f, r.RightColor,
+                        Text(font, pct, new Vector2(x + width, y), scale * 0.9f, r.RightColor,
                             MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP, false, pw);
                         break;
                     }
