@@ -746,63 +746,202 @@ namespace DaneHud
             }
         }
 
+        /// <summary>Przedmioty, które plugin sam wrzucił do kolejki (jak stan „[A:” u Isy) — tylko te zdejmuje, gdy jest ich dość.</summary>
+        readonly HashSet<string> crafting = new HashSet<string>();
+        public string AsmWarning = "";
+
+        /// <summary>
+        /// Autocrafting przeniesiony z Isy's Inventory Manager (funkcje ː, Λ/Υ, Σ, Ο, Ρ, β):
+        ///  ː  brak = chciane − jest; kolejkuje tylko, gdy przedmiotu nie ma w żadnej kolejce,
+        ///     gdy jest już dość — zdejmuje go z kolejek
+        ///  Υ  brakującą ilość dzieli po równo na wszystkie montażownie, które umieją ją zrobić (na początek kolejki)
+        ///  Ο  z najbardziej zajętej montażowni część zadań przechodzi do pustych
+        ///  Ρ  przedmioty z priorytetem (P) na początek kolejki, β  inaczej najpierw ten, którego jest najmniej
+        /// </summary>
         void Autocraft(Ctx c, World w, MagazynCfg m)
         {
-            if (m.Quotas == null || m.Quotas.Count == 0 || w.Assemblers.Count == 0) return;
+            AsmWarning = "";
+            if (m.Quotas == null || w.Assemblers.Count == 0) return;
             var items = c.Items(false);
+            var asms = w.Assemblers.Where(a => !w.IsLocked(Ctx.NameOf(a))).Select(a => (Ing.IMyAssembler)a).ToList();
+            if (asms.Count == 0) return;
+            var now = DateTime.UtcNow;
+            Func<MyDefinitionId, double> stock = id => items.TryGetValue(id.ToString(), out var h) ? (h?.Amount ?? 0) : 0;
 
-            // co już jest w kolejkach montażowni
+            // ǃ: co jest w kolejkach (w przebiegach) + montażownie z kolejką, które stoją
             var inQueue = new Dictionary<MyDefinitionId, double>();
-            var qlen = new Dictionary<MyCubeBlock, double>();
             var q = new List<Ing.MyProductionItem>();
-            foreach (var a in w.Assemblers)
+            var idle = new List<string>();
+            foreach (var asm in asms)
             {
-                var asm = (Ing.IMyAssembler)a;
                 q.Clear();
                 try { asm.GetQueue(q); } catch { continue; }
-                double len = 0;
+                if (q.Count > 0 && !asm.IsProducing && asm.Mode == Ing.MyAssemblerMode.Assembly) idle.Add(asm.CustomName);
                 foreach (var it in q)
                 {
                     inQueue.TryGetValue(it.BlueprintId, out var v);
                     inQueue[it.BlueprintId] = v + (double)it.Amount;
-                    len += (double)it.Amount;
                 }
-                qlen[a] = len;
             }
+            if (idle.Count > 0)
+                AsmWarning = T("Kolejka stoi (brak sztabek?): ", "Queue not moving (no ingots?): ") + string.Join(", ", idle.Take(3)) + (idle.Count > 3 ? " ..." : "");
 
+            // ː: każdy limit
             QueuedNow.Clear();
+            var prio = new List<MyDefinitionId>();
             foreach (var quota in m.Quotas)
             {
                 if (quota.Amount <= 0) continue;
-                MyDefinitionId id;
-                if (!MyDefinitionId.TryParse(quota.Id, out id)) continue;
+                if (!MyDefinitionId.TryParse(quota.Id, out MyDefinitionId id)) continue;
                 var bp = BlueprintFor(id);
                 if (bp == null) continue;
                 double perRun = 1;
                 try { perRun = Math.Max(0.0001, (double)bp.Results.First(r => r.Id == id).Amount); } catch { }
                 inQueue.TryGetValue(bp.Id, out var queuedRuns);
-                double queued = queuedRuns * perRun;
-                QueuedNow[quota.Id] = queued;
-                items.TryGetValue(quota.Id, out var have);
-                double missing = quota.Amount - (have?.Amount ?? 0) - queued;
-                if (missing < perRun) continue;
-                if (queueCooldown.TryGetValue(quota.Id, out var until) && until > DateTime.UtcNow) continue;
+                QueuedNow[quota.Id] = queuedRuns * perRun;
+                if (quota.Priority) prio.Add(bp.Id);
+                double have = Math.Ceiling(stock(id));
+                double wanted = quota.Amount;
 
-                var asm = w.Assemblers
-                    .Where(a => ((Ing.IMyAssembler)a).Mode == Ing.MyAssemblerMode.Assembly && !w.IsLocked(Ctx.NameOf(a)))
-                    .Where(a => { try { return ((Ing.IMyAssembler)a).CanUseBlueprint(bp.Id); } catch { return false; } })
-                    .OrderBy(a => qlen.TryGetValue(a, out var l) ? l : 0).FirstOrDefault();
-                if (asm == null) continue;
-                double runs = Math.Ceiling(missing / perRun);
+                // jest dość, a plugin to kolejkował — zdejmij z kolejek
+                if (have >= wanted)
+                {
+                    if (queuedRuns > 0 && crafting.Contains(quota.Id)) { RemoveFromQueues(asms, bp.Id); Note(T("z kolejki: ", "unqueued: ") + Ctx.ItemName(id)); }
+                    crafting.Remove(quota.Id);
+                    continue;
+                }
+                crafting.Add(quota.Id);
+                if (queuedRuns > 0) continue;                       // [A:n] — czeka, aż się zrobi
+                if (queueCooldown.TryGetValue(quota.Id, out var until) && until > now) continue;   // serwer jeszcze nie odesłał kolejki
+                double runs = Math.Ceiling((wanted - have) / perRun);
+                if (runs < 1) continue;
+
+                // Λ/Υ: po równo na wszystkie montażownie, które umieją to zrobić
+                var able = asms.Where(a =>
+                {
+                    try { return a.Mode == Ing.MyAssemblerMode.Assembly && a.CanUseBlueprint(bp.Id); } catch { return false; }
+                }).ToList();
+                if (able.Count == 0) continue;
+                double each = Math.Ceiling(runs / able.Count);
+                double left = runs;
+                int used = 0;
+                foreach (var a in able)
+                {
+                    if (left <= 0) break;
+                    double n = Math.Min(each, left);
+                    try { a.InsertQueueItem(0, bp.Id, (MyFixedPoint)n); left -= n; used++; }
+                    catch (Exception e) { Plugin.LogOnce("queue", e); }
+                }
+                if (used == 0) continue;
+                queueCooldown[quota.Id] = now.AddSeconds(20);
+                Queued++;
+                Note($"{T("kolejka", "queue")}: {Fmt.Amount((runs - left) * perRun)} {Ctx.ItemName(id)} » {used} {T("montażownie", "assemblers")}");
+            }
+
+            SplitTasks(asms, now);
+            SortQueues(asms, prio, stock, now);
+        }
+
+        /// <summary>Σ: zdejmuje blueprint ze wszystkich kolejek.</summary>
+        void RemoveFromQueues(List<Ing.IMyAssembler> asms, MyDefinitionId bp)
+        {
+            var q = new List<Ing.MyProductionItem>();
+            foreach (var a in asms)
+            {
+                q.Clear();
+                try { a.GetQueue(q); } catch { continue; }
+                for (int i = q.Count - 1; i >= 0; i--)
+                    if (q[i].BlueprintId == bp)
+                        try { a.RemoveQueueItem(i, q[i].Amount); } catch (Exception e) { Plugin.LogOnce("unqueue", e); }
+            }
+        }
+
+        /// <summary>Ο (splitAssemblerTasks): zadania z najbardziej zajętej montażowni dzielone z pustymi.</summary>
+        void SplitTasks(List<Ing.IMyAssembler> asms, DateTime now)
+        {
+            if (queueCooldown.TryGetValue("split", out var until) && until > now) return;
+            var empty = asms.Where(a => a.IsQueueEmpty && a.Mode == Ing.MyAssemblerMode.Assembly).ToList();
+            if (empty.Count == 0) return;
+            Ing.IMyAssembler busiest = null;
+            double most = 0;
+            var q = new List<Ing.MyProductionItem>();
+            foreach (var a in asms)
+            {
+                if (a.IsQueueEmpty || a.Mode != Ing.MyAssemblerMode.Assembly) continue;
+                q.Clear();
+                try { a.GetQueue(q); } catch { continue; }
+                double sum = q.Sum(x => (double)x.Amount);
+                if (sum > most) { most = sum; busiest = a; }
+            }
+            if (busiest == null) return;
+            q.Clear();
+            busiest.GetQueue(q);
+            bool moved = false;
+            for (int i = q.Count - 1; i >= 0; i--)          // od końca, żeby indeksy się nie przesuwały
+            {
+                double amount = (double)q[i].Amount;
+                if (amount < 10) continue;
+                double part = Math.Max(1, Math.Floor(amount / (empty.Count + 1)));
+                foreach (var a in empty)
+                {
+                    bool can;
+                    try { can = a.CanUseBlueprint(q[i].BlueprintId); } catch { can = false; }
+                    if (!can) continue;
+                    try
+                    {
+                        a.AddQueueItem(q[i].BlueprintId, (MyFixedPoint)part);
+                        busiest.RemoveQueueItem(i, (MyFixedPoint)part);
+                        amount -= part; moved = true;
+                    }
+                    catch (Exception e) { Plugin.LogOnce("split", e); break; }
+                    if (amount <= 1) break;
+                }
+            }
+            if (moved)
+            {
+                queueCooldown["split"] = now.AddSeconds(15);
+                Note(T("podział kolejki: ", "queue split: ") + busiest.CustomName + " » " + empty.Count);
+            }
+        }
+
+        /// <summary>Ρ + β (sortAssemblerQueue): priorytet na początek, inaczej przedmiot, którego jest najmniej (poniżej 100), albo największe zadanie.</summary>
+        void SortQueues(List<Ing.IMyAssembler> asms, List<MyDefinitionId> prio, Func<MyDefinitionId, double> stock, DateTime now)
+        {
+            var q = new List<Ing.MyProductionItem>();
+            Func<MyDefinitionId, MyDefinitionId> result = bp =>
+            {
+                try { var d = MyDefinitionManager.Static.GetBlueprintDefinition(bp); if (d?.Results?.Length > 0) return d.Results[0].Id; } catch { }
+                return default(MyDefinitionId);
+            };
+            prio = prio.OrderBy(bp => stock(result(bp))).ToList();
+            foreach (var a in asms)
+            {
+                if (a.Mode != Ing.MyAssemblerMode.Assembly) continue;
+                string key = "aq:" + a.EntityId;
+                if (queueCooldown.TryGetValue(key, out var until) && until > now) continue;
+                q.Clear();
+                try { a.GetQueue(q); } catch { continue; }
+                if (q.Count < 2) continue;
+                int best = -1;
+                foreach (var bp in prio) { best = q.FindIndex(x => x.BlueprintId == bp); if (best >= 0) break; }
+                if (best < 0)
+                {
+                    double low = double.MaxValue, big = double.MinValue;
+                    for (int i = 0; i < q.Count; i++)
+                    {
+                        double st = stock(result(q[i].BlueprintId)), amt = (double)q[i].Amount;
+                        if (st < 100 && st < low) { low = st; best = i; continue; }
+                        if (low == double.MaxValue && amt > big) { big = amt; best = i; }
+                    }
+                }
+                if (best <= 0) continue;
                 try
                 {
-                    ((Ing.IMyAssembler)asm).AddQueueItem(bp.Id, (MyFixedPoint)runs);
-                    qlen[asm] = (qlen.TryGetValue(asm, out var l0) ? l0 : 0) + runs;
-                    queueCooldown[quota.Id] = DateTime.UtcNow.AddSeconds(20);
-                    Queued++;
-                    Note($"{T("kolejka", "queue")}: {Fmt.Amount(runs * perRun)} {Ctx.ItemName(id)} » {Ctx.NameOf(asm)}");
+                    a.MoveQueueItemRequest(q[best].ItemId, 0);
+                    queueCooldown[key] = now.AddSeconds(10);
+                    Note(Ctx.ItemName(result(q[best].BlueprintId)) + T(" na początek: ", " to the front: ") + a.CustomName);
                 }
-                catch (Exception e) { Plugin.LogOnce("queue", e); }
+                catch (Exception e) { Plugin.LogOnce("asmsort", e); }
             }
         }
 
@@ -831,8 +970,38 @@ namespace DaneHud
                 if (e.Wanted <= 0) { if (q != null) m.Quotas.Remove(q); n++; continue; }
                 if (q == null) m.Quotas.Add(q = new Quota { Id = key });
                 q.Amount = e.Wanted;
+                string mods = (e.Extra ?? "").ToUpperInvariant();
+                q.Priority = mods.Contains("P");
                 n++;
             }
+            // ukryte u Isy: CustomData pierwszego LCD, "-SteelPlate=300000" (H: limit w tle), "-SteelPlate" (I: bez limitu)
+            try
+            {
+                var panels = c.Panels(string.IsNullOrEmpty(keyword) ? "Autocrafting" : keyword);
+                var cd = panels.Count > 0 ? panels[0].CustomData ?? "" : "";
+                foreach (var raw in cd.Split('\n'))
+                {
+                    var line = raw.Trim();
+                    if (!line.StartsWith("-") || line.Length < 2) continue;
+                    int eq = line.IndexOf('=');
+                    string name = (eq > 0 ? line.Substring(1, eq - 1) : line.Substring(1)).Trim();
+                    var d = defs.FirstOrDefault(x => x.Id.SubtypeName == name);
+                    if (d == null) { unknown++; continue; }
+                    string key = d.Id.ToString();
+                    var q = m.Quotas.FirstOrDefault(x => x.Id == key);
+                    if (q == null) m.Quotas.Add(q = new Quota { Id = key });
+                    q.Hide = true;
+                    if (eq > 0)
+                    {
+                        var num = System.Text.RegularExpressions.Regex.Match(line.Substring(eq + 1), @"\d+").Value;
+                        double.TryParse(num, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v);
+                        q.Amount = v;
+                    }
+                    else q.Amount = 0;
+                    n++;
+                }
+            }
+            catch { }
             return n;
         }
     }

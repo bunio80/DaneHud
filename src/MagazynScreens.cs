@@ -91,7 +91,14 @@ namespace DaneHud
             Number(x + 0.54f, y, 0.08f, m.UraniumSmall, v => m.UraniumSmall = Math.Max(0, v)); y += row;
 
             // --- autocrafting
-            Check(x, y, T("Autocrafting wg limitów", "Autocrafting by limits"), m.Autocraft, v => m.Autocraft = v);
+            Check(x, y, T("Autocrafting wg limitów", "Autocrafting by limits"), m.Autocraft, v =>
+            {
+                m.Autocraft = v;
+                if (v)
+                    foreach (var w in g.Windows)
+                        foreach (var e in w.Elements)
+                            if (e.Kind == ElementKind.Autocrafting) e.FromPlugin = true;
+            });
             int set = m.Quotas.Count(q => q.Amount > 0);
             Button(0.2f, y, T($"Limity autocraftingu... ({set})", $"Autocrafting limits... ({set})"), () => MyGuiSandbox.AddScreen(new QuotaScreen(g, () => RecreateControls(false))), 0.3f); y += row * 0.8f;
             Label(x + 0.035f, y, T("Nauka jak u Isy: \"!learn\" w nazwie montażowni + przedmiot w jej kolejce = nowy limit (\"!learnMany\" uczy dalej).",
@@ -261,6 +268,7 @@ namespace DaneHud
         readonly GridProfile g;
         readonly Action onClose;
         static int cat = 0;
+        static bool onlySet = false;
         static readonly ItemCat[] Cats = { ItemCat.Component, ItemCat.Tool, ItemCat.Ammo, ItemCat.Bottle, ItemCat.Ingot, ItemCat.Consumable, ItemCat.Other, ItemCat.All };
         Dictionary<string, ItemAmount> have;
         string info = "";
@@ -277,9 +285,12 @@ namespace DaneHud
 
         public override string GetFriendlyName() => "DaneHudQuota";
 
-        List<MyPhysicalItemDefinition> Defs()
+        static string NameOf(MyPhysicalItemDefinition d) => d.DisplayNameText ?? d.Id.SubtypeName;
+
+        List<MyPhysicalItemDefinition> Defs(bool filterSet)
         {
             var c = Cats[Math.Max(0, Math.Min(Cats.Length - 1, cat))];
+            var m = g.Magazyn;
             var list = new List<MyPhysicalItemDefinition>();
             try
             {
@@ -288,11 +299,33 @@ namespace DaneHud
                     if (d == null || !d.Public) continue;
                     if (c != ItemCat.All && Ctx.CatOf(d.Id.TypeId.ToString()) != c) continue;
                     if (Magazyn.BlueprintFor(d.Id) == null) continue;
+                    if (filterSet)
+                    {
+                        string key = d.Id.ToString();
+                        var q = m.Quotas.FirstOrDefault(z => z.Id == key);
+                        if (q == null || (q.Amount <= 0 && !q.Hide && !q.Priority)) continue;
+                    }
                     list.Add(d);
                 }
             }
             catch { }
-            return list.OrderBy(d => d.DisplayNameText).ToList();
+            return list.OrderBy(NameOf, StringComparer.CurrentCultureIgnoreCase).ToList();
+        }
+
+        /// <summary>Wpis limitu (tworzy go, gdy trzeba); pusty wpis bez flag znika.</summary>
+        Quota Get(string key, bool create)
+        {
+            var m = g.Magazyn;
+            var q = m.Quotas.FirstOrDefault(z => z.Id == key);
+            if (q == null && create) m.Quotas.Add(q = new Quota { Id = key });
+            return q;
+        }
+
+        void Tidy(string key)
+        {
+            var q = Get(key, false);
+            if (q != null && q.Amount <= 0 && !q.Hide && !q.Priority) g.Magazyn.Quotas.Remove(q);
+            Plugin.Dirty = true;
         }
 
         public override void RecreateControls(bool constructor)
@@ -315,66 +348,96 @@ namespace DaneHud
             }, 0.22f);
             Button(0.32f, -0.39f, T("Wyzeruj ten rodzaj", "Clear this kind"), () =>
             {
-                var keys = new HashSet<string>(Defs().Select(d => d.Id.ToString()));
+                var keys = new HashSet<string>(Defs(false).Select(d => d.Id.ToString()));
                 m.Quotas.RemoveAll(q => keys.Contains(q.Id));
+                Plugin.Dirty = true;
                 RecreateControls(false);
             }, 0.2f);
-            Label(-0.39f, -0.345f, string.IsNullOrEmpty(info)
-                ? T("Wpisz, ile sztuk ma być w gridzie (0 = bez limitu). Liczba po prawej = ile jest teraz.", "Enter how many should be in the grid (0 = no limit). The number on the right = how many now.")
-                : info, 0.64f);
+            Check(-0.39f, -0.345f, T("Tylko z limitem", "Only with a limit"), onlySet, v => { onlySet = v; RecreateControls(false); });
+            Label(-0.15f, -0.345f, string.IsNullOrEmpty(info)
+                ? T("Limit = ile sztuk ma być w gridzie (puste = bez limitu).", "Limit = how many should be in the grid (empty = none).")
+                : info, 0.62f);
 
-            var defs = Defs();
-            const float width = 0.78f, itemRow = 0.04f;
-            const int ncol = 2;
-            float colW = (width - 0.03f) / ncol;
-            int rows = (defs.Count + ncol - 1) / ncol;
-            float visibleH = 0.7f;
-            float contentH = Math.Max(visibleH, rows * itemRow + 0.01f);
-            var parent = new MyGuiControlParent { Size = new Vector2(width - 0.02f, contentH) };
+            // kolumny (przesunięcia od lewej krawędzi wiersza)
+            const float oHave = 0.40f, oQueue = 0.49f, oLimit = 0.505f, oPrio = 0.635f, oHide = 0.69f;
+            const float hx = -0.375f, hy = -0.3f;
+            Label(hx, hy, T("Przedmiot", "Item"), 0.64f);
+            HeadRight(hx + oHave, hy, T("Jest", "Have"));
+            HeadRight(hx + oQueue, hy, T("W kolejce", "Queued"));
+            Label(hx + oLimit, hy, T("Limit", "Limit"), 0.64f);
+            Label(hx + oPrio - 0.012f, hy, T("Prio.", "Prio."), 0.64f);
+            Label(hx + oHide - 0.012f, hy, T("Ukryj", "Hide"), 0.64f);
+
+            var defs = Defs(onlySet);
+            const float width = 0.78f, itemRow = 0.038f;
+            float visibleH = 0.66f;
+            float contentH = Math.Max(visibleH, defs.Count * itemRow + 0.01f);
+            float pw = width - 0.02f;
+            var parent = new MyGuiControlParent { Size = new Vector2(pw, contentH) };
             var inv = CultureInfo.InvariantCulture;
+            Dictionary<string, double> queued = Plugin.ActiveProfile == g ? Magazyn.I.QueuedNow : null;
+            float x0 = -pw / 2f + 0.01f;
             for (int i = 0; i < defs.Count; i++)
             {
                 var d = defs[i];
                 var key = d.Id.ToString();
-                float x0 = -(width - 0.02f) / 2f + 0.005f + (i % ncol) * colW;
-                float yy = -contentH / 2f + itemRow / 2f + 0.005f + (i / ncol) * itemRow;
+                float yy = -contentH / 2f + itemRow / 2f + 0.005f + i * itemRow;
+                var q = Get(key, false);
+                double hv = 0;
+                if (have != null && have.TryGetValue(key, out var h)) hv = h?.Amount ?? 0;
+                bool low = q != null && q.Amount > 0 && hv < q.Amount;
+                string name = NameOf(d);
+                if (name.Length > 34) name = name.Substring(0, 33) + "…";
                 parent.Controls.Add(new MyGuiControlLabel
                 {
-                    Position = new Vector2(x0, yy),
-                    Text = d.DisplayNameText ?? d.Id.SubtypeName,
-                    TextScale = 0.62f,
+                    Position = new Vector2(x0, yy), Text = name, TextScale = 0.62f,
+                    ColorMask = q != null && q.Hide ? new Vector4(0.6f, 0.6f, 0.6f, 1f) : Vector4.One,
                     OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
                 });
-                var q = m.Quotas.FirstOrDefault(z => z.Id == key);
-                var tb = new MyGuiControlTextbox(new Vector2(x0 + 0.19f, yy), q != null && q.Amount > 0 ? q.Amount.ToString("0.##", inv) : "", 12)
+                if (have != null)
+                    parent.Controls.Add(new MyGuiControlLabel
+                    {
+                        Position = new Vector2(x0 + oHave, yy), Text = Fmt.Amount(hv), TextScale = 0.6f,
+                        ColorMask = low ? new Vector4(1f, 0.55f, 0.35f, 1f) : Vector4.One,
+                        OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_CENTER,
+                    });
+                if (queued != null && queued.TryGetValue(key, out var qv) && qv > 0)
+                    parent.Controls.Add(new MyGuiControlLabel
+                    {
+                        Position = new Vector2(x0 + oQueue, yy), Text = "+" + Fmt.Amount(qv), TextScale = 0.6f,
+                        OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_CENTER,
+                    });
+                var tb = new MyGuiControlTextbox(new Vector2(x0 + oLimit, yy), q != null && q.Amount > 0 ? q.Amount.ToString("0.##", inv) : "", 12)
                 {
                     OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
                 };
-                tb.Size = new Vector2(0.09f, tb.Size.Y);
+                tb.Size = new Vector2(0.1f, tb.Size.Y);
                 tb.TextChanged += t =>
                 {
                     double.TryParse((t.Text ?? "").Replace(',', '.').Trim(), NumberStyles.Float, inv, out var v);
-                    var qq = m.Quotas.FirstOrDefault(z => z.Id == key);
-                    if (v <= 0) { if (qq != null) m.Quotas.Remove(qq); }
-                    else { if (qq == null) m.Quotas.Add(qq = new Quota { Id = key }); qq.Amount = v; }
-                    Plugin.Dirty = true;
+                    Get(key, true).Amount = Math.Max(0, v);
+                    Tidy(key);
                 };
                 parent.Controls.Add(tb);
-                if (have != null)
-                {
-                    have.TryGetValue(key, out var h);
-                    parent.Controls.Add(new MyGuiControlLabel
-                    {
-                        Position = new Vector2(x0 + 0.29f, yy),
-                        Text = Fmt.Amount(h?.Amount ?? 0),
-                        TextScale = 0.6f,
-                        OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
-                    });
-                }
+                var cp = new MyGuiControlCheckbox(new Vector2(x0 + oPrio, yy), null, T("Zawsze pierwszy w kolejce (P u Isy)", "Always first in the queue (Isy's P)"),
+                    q != null && q.Priority, MyGuiControlCheckboxStyleEnum.Default, MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER);
+                cp.IsCheckedChanged += cb => { Get(key, true).Priority = cb.IsChecked; Tidy(key); };
+                parent.Controls.Add(cp);
+                var ch = new MyGuiControlCheckbox(new Vector2(x0 + oHide, yy), null, T("Limit działa, ale nie pokazuj na HUD (H u Isy)", "Limit works but hide from the HUD (Isy's H)"),
+                    q != null && q.Hide, MyGuiControlCheckboxStyleEnum.Default, MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER);
+                ch.IsCheckedChanged += cb => { Get(key, true).Hide = cb.IsChecked; Tidy(key); };
+                parent.Controls.Add(ch);
             }
+            if (defs.Count == 0)
+                parent.Controls.Add(new MyGuiControlLabel
+                {
+                    Position = new Vector2(x0, -contentH / 2f + 0.03f), TextScale = 0.65f,
+                    Text = onlySet ? T("Brak limitów w tym rodzaju.", "No limits of this kind.") : T("(pusto)", "(empty)"),
+                    OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
+                });
             var panel = new MyGuiControlScrollablePanel(parent)
             {
-                Position = new Vector2(-0.39f, -0.32f),
+                Position = new Vector2(-0.39f, -0.28f),
                 Size = new Vector2(width, visibleH),
                 OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP,
                 ScrollbarVEnabled = true,
@@ -383,6 +446,15 @@ namespace DaneHud
             };
             Controls.Add(panel);
             Button(0f, 0.43f, "OK", () => CloseScreen(false), 0.18f, 0.048f);
+        }
+
+        void HeadRight(float x, float y, string text)
+        {
+            Controls.Add(new MyGuiControlLabel
+            {
+                Position = new Vector2(x, y), Text = text, TextScale = 0.64f,
+                OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_CENTER,
+            });
         }
 
         protected override void OnClosed()

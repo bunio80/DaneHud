@@ -344,6 +344,8 @@ namespace DaneHud
     {
         public string Id = "";       // np. MyObjectBuilder_Component/SteelPlate
         public double Amount;
+        public bool Hide;            // jak 'H' u Isy: limit działa w tle, przedmiot nie pokazuje się na HUD
+        public bool Priority;        // jak 'P' u Isy: zawsze na początku kolejki montażowni
     }
 
     /// <summary>Magazyn — części skryptu Isy wykonywane przez plugin (gdy siedzisz w gridzie).</summary>
@@ -375,6 +377,7 @@ namespace DaneHud
         public bool LiveInventory = true;      // "wirtualny terminal": serwer przysyła zawartość ładowni na bieżąco
         public bool PerGrid = true;            // osobne okna dla każdego grida
         public bool Initialized = false;
+        public int CfgVersion = 0;             // migracje ustawień między wersjami
         public int RefreshTicks = 30;          // co ile klatek liczyć dane (30 = pół sekundy)
         public List<WindowCfg> Windows = new List<WindowCfg>();      // szablon: okna gridów bez własnego profilu
         public List<GridProfile> Grids = new List<GridProfile>();    // profile gridów
@@ -418,7 +421,14 @@ namespace DaneHud
                 if (g.Magazyn == null) g.Magazyn = new MagazynCfg();
                 if (g.Magazyn.Quotas == null) g.Magazyn.Quotas = new List<Quota>();
                 FixWindows(g.Windows);
+                g.Magazyn.Quotas.RemoveAll(q => q == null || string.IsNullOrEmpty(q.Id));
+                // v8: gdy autocrafting robi plugin, okno Autocrafting czyta jego limity, a nie stary LCD Isy
+                if (CfgVersion < 8 && g.Magazyn.Autocraft)
+                    foreach (var w in g.Windows)
+                        foreach (var e in w.Elements)
+                            if (e.Kind == ElementKind.Autocrafting) e.FromPlugin = true;
             }
+            if (CfgVersion < 8) CfgVersion = 8;
             if (RefreshTicks < 10) RefreshTicks = 30;
             if (Language < 0 || Language > 1) Language = 0;
         }

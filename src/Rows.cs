@@ -482,7 +482,7 @@ namespace DaneHud
             if (m == null || m.Quotas == null || m.Quotas.Count == 0) return null;
             var items = c.Items(false);
             var res = new List<AutoEntry>();
-            foreach (var q in m.Quotas.Where(x => x.Amount > 0))
+            foreach (var q in m.Quotas.Where(x => x.Amount > 0 && !x.Hide))
             {
                 if (!VRage.Game.MyDefinitionId.TryParse(q.Id, out var id)) continue;
                 items.TryGetValue(q.Id, out var have);
@@ -508,6 +508,7 @@ namespace DaneHud
             Pair(T("Przeniesienia / kolejka:", "Moves / queued:"), g.Moved + " / " + g.Queued);
             if (!string.IsNullOrEmpty(g.ScriptName)) Pair(T("Rafinerie:", "Refineries:"), T("skrypt PB ", "PB script ") + g.ScriptName);
             else if (!string.IsNullOrEmpty(g.PrimaryOre)) Pair(T("Rafinerie najpierw:", "Refining first:"), g.PrimaryOre);
+            if (m.Autocraft && !string.IsNullOrEmpty(g.AsmWarning)) Text(g.AsmWarning, warn);
             if (g.Unreachable.Count > 0)
                 Text(T("Bez konwejera: ", "No conveyor: ") + string.Join(", ", g.Unreachable.Take(4)) + (g.Unreachable.Count > 4 ? " ..." : ""), warn);
             for (int i = 0; i < Limit(e, g.Recent.Count); i++) Text("  " + g.Recent[i], text);
@@ -519,6 +520,7 @@ namespace DaneHud
             {
                 var own = PluginAuto(c);
                 if (own == null) { Text(T("Brak limitów w Magazynie (/data » Magazyn)", "No limits in Storage (/data » Storage)"), warn); return; }
+                if (Plugin.ActiveProfile?.Magazyn?.Autocraft != true) Text(T("Autocrafting w Magazynie wyłączony", "Autocrafting in Storage is off"), warn);
                 AutoRows(e, own);
                 return;
             }
