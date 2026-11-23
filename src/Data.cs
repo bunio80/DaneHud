@@ -35,7 +35,7 @@ namespace DaneHud
     }
 
     /// <summary>Stan grida, w którym siedzi gracz (kokpit/fotel/zdalne sterowanie). Liczone raz na odświeżenie, leniwie.</summary>
-    internal class Ctx
+    internal partial class Ctx
     {
         public static readonly MyDefinitionId Elec = MyResourceDistributorComponent.ElectricityId;
         public static readonly MyDefinitionId H2 = MyDefinitionId.Parse("MyObjectBuilder_GasProperties/Hydrogen");
@@ -48,7 +48,7 @@ namespace DaneHud
 
         Dictionary<string, ItemAmount> items, cargoItems;
         public Dictionary<string, ItemAmount> Items(bool onlyCargo) =>
-            onlyCargo ? (cargoItems ?? (cargoItems = CountItems(true))) : (items ?? (items = CountItems(false)));
+            onlyCargo ? (cargoItems ?? (cargoItems = CountItems(Blocks.Where(b => b is Ing.IMyCargoContainer)))) : (items ?? (items = CountItems(Blocks)));
 
         public static Ctx Collect()
         {
@@ -86,6 +86,8 @@ namespace DaneHud
                 case "MyObjectBuilder_PhysicalGunObject": return ItemCat.Tool;
                 case "MyObjectBuilder_OxygenContainerObject":
                 case "MyObjectBuilder_GasContainerObject": return ItemCat.Bottle;
+                case "MyObjectBuilder_ConsumableItem":
+                case "MyObjectBuilder_SeedItem": return ItemCat.Consumable;
             }
             return ItemCat.Other;
         }
@@ -106,12 +108,11 @@ namespace DaneHud
             return n;
         }
 
-        Dictionary<string, ItemAmount> CountItems(bool onlyCargo)
+        static Dictionary<string, ItemAmount> CountItems(IEnumerable<MyCubeBlock> blocks)
         {
             var res = new Dictionary<string, ItemAmount>();
-            foreach (var b in Blocks)
+            foreach (var b in blocks)
             {
-                if (onlyCargo && !(b is Ing.IMyCargoContainer)) continue;
                 int n = b.InventoryCount;
                 for (int i = 0; i < n; i++)
                 {
@@ -346,7 +347,7 @@ namespace DaneHud
             public int Count;
         }
 
-        public static readonly string[] DirNames = { "Przód", "Tył", "Góra", "Dół", "Lewo", "Prawo" };
+        public static string[] DirNames => L.En ? new[] { "Forward", "Backward", "Up", "Down", "Left", "Right" } : new[] { "Przód", "Tył", "Góra", "Dół", "Lewo", "Prawo" };
 
         ThrustInfo thrust;
         public ThrustInfo Thrust => thrust ?? (thrust = ComputeThrust());

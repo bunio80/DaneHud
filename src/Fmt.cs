@@ -52,6 +52,9 @@ namespace DaneHud
         /// <summary>Przepływ gazu w L/s.</summary>
         public static string Rate(double lps) => Scaled(lps, new[] { " L/s", " kL/s", " ML/s" });
 
+        /// <summary>Odległość w metrach.</summary>
+        public static string Distance(double m) => Math.Abs(m) < 1000 ? m.ToString("0", Inv) + " m" : (m / 1000.0).ToString(Math.Abs(m) < 100000 ? "0.0" : "0", Inv) + " km";
+
         public static string Pct(double f) => (f * 100.0).ToString("0.0", Inv) + "%";
 
         public static string Time(double seconds)
@@ -94,9 +97,9 @@ namespace DaneHud
                 case "Gold": return "Au";
                 case "Platinum": return "Pt";
                 case "Uranium": return "U";
-                case "Stone": return "Kam";
-                case "Scrap": return "Złom";
-                case "Ice": return "Lód";
+                case "Stone": return L.T("Kam", "Stn");
+                case "Scrap": return L.T("Złom", "Scr");
+                case "Ice": return L.T("Lód", "Ice");
                 case "Organic": return "Org";
             }
             return ore.Length <= 3 ? ore : ore.Substring(0, 3);

@@ -39,6 +39,34 @@ namespace DaneHud
             }
         }
 
+        static readonly Dictionary<string, string> fitCache = new Dictionary<string, string>();
+
+        /// <summary>Skraca tekst z lewej kolumny, żeby nie wchodził na liczby po prawej.</summary>
+        static string Fit(string font, string s, float scale, float maxW)
+        {
+            if (s.Length < 4) return s;
+            string key = font + "|" + scale.ToString("0.000") + "|" + maxW.ToString("0.000") + "|" + s;
+            if (fitCache.TryGetValue(key, out var r)) return r;
+            r = s;
+            try
+            {
+                if (MyGuiManager.MeasureString(font, s, scale).X > maxW)
+                {
+                    int lo = 1, hi = s.Length - 1;
+                    while (lo < hi)
+                    {
+                        int mid = (lo + hi + 1) / 2;
+                        if (MyGuiManager.MeasureString(font, s.Substring(0, mid) + "..", scale).X <= maxW) lo = mid; else hi = mid - 1;
+                    }
+                    r = s.Substring(0, lo).TrimEnd() + "..";
+                }
+            }
+            catch { }
+            if (fitCache.Count > 2000) fitCache.Clear();
+            fitCache[key] = r;
+            return r;
+        }
+
         public static void Draw(WindowCfg w, List<Row> rows)
         {
             if (rows == null) return;
@@ -79,7 +107,10 @@ namespace DaneHud
                 switch (r.Kind)
                 {
                     case RowKind.Text:
-                        if (r.Center)
+                        if (r.AlignRight)
+                            MyGuiManager.DrawString(font, r.Left ?? "", new Vector2(x + width, y), scale, r.LeftColor,
+                                MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP, false, width);
+                        else if (r.Center)
                             MyGuiManager.DrawString(font, r.Left ?? "", new Vector2(x + width / 2f, y), scale, r.LeftColor,
                                 MyGuiDrawAlignEnum.HORISONTAL_CENTER_AND_VERTICAL_TOP, false, width);
                         else
@@ -95,7 +126,7 @@ namespace DaneHud
                         MyGuiManager.DrawString(font, rt, new Vector2(x + width, y), scale, r.RightColor,
                             MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP, false, width);
                         float lw = Math.Max(0.01f, width - rw - 0.008f);
-                        MyGuiManager.DrawString(font, r.Left ?? "", new Vector2(x, y), scale, r.LeftColor,
+                        MyGuiManager.DrawString(font, Fit(font, r.Left ?? "", scale, lw), new Vector2(x, y), scale, r.LeftColor,
                             MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, false, lw);
                         break;
                     }
@@ -147,9 +178,10 @@ namespace DaneHud
                 if (cfg == null || !cfg.Visible || !Plugin.Seated) return true;
                 if (!MyHud.IsVisible) return true;
                 if (MyAPIGateway.Gui != null && MyAPIGateway.Gui.IsCursorVisible) return true;
-                var rows = Plugin.Rows;
-                for (int i = 0; i < cfg.Windows.Count && i < rows.Length; i++)
-                    if (cfg.Windows[i].Enabled) Render.Draw(cfg.Windows[i], rows[i]);
+                var shown = Plugin.Shown;
+                if (shown == null) return true;
+                for (int i = 0; i < shown.Windows.Count && i < shown.Rows.Length; i++)
+                    if (shown.Windows[i].Enabled) Render.Draw(shown.Windows[i], shown.Rows[i]);
             }
             catch (Exception e) { Plugin.LogOnce("draw", e); }
             return true;
