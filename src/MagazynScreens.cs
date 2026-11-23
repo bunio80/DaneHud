@@ -488,7 +488,24 @@ namespace DaneHud
             Controls.Add(panel);
             panelRef = panel;
             if (scroll > 0) { try { panel.ScrollbarVPosition = scroll; } catch { } scroll = 0; }
+            Button(-0.27f, 0.43f, T("Ukryj wszystkie", "Hide all"), () => SetHideAll(defs, true), 0.2f, 0.048f);
             Button(0f, 0.43f, "OK", () => CloseScreen(false), 0.18f, 0.048f);
+            Button(0.27f, 0.43f, T("Pokaż wszystkie", "Show all"), () => SetHideAll(defs, false), 0.2f, 0.048f);
+        }
+
+        /// <summary>Ukryj / pokaż na HUD wszystko z widocznej listy (wybrany rodzaj i filtr). Limity działają dalej.</summary>
+        void SetHideAll(List<MyPhysicalItemDefinition> shown, bool hide)
+        {
+            foreach (var d in shown)
+            {
+                string key = d.Id.ToString();
+                if (hide) Get(key, true).Hide = true;
+                else { var q = Get(key, false); if (q != null) q.Hide = false; }
+                Tidy(key);
+            }
+            info = hide ? T($"Ukryto na HUD: {shown.Count}", $"Hidden on HUD: {shown.Count}") : T($"Pokazano na HUD: {shown.Count}", $"Shown on HUD: {shown.Count}");
+            scroll = panelRef?.ScrollbarVPosition ?? 0;
+            RecreateControls(false);
         }
 
         void HeadRight(float x, float y, string text)
