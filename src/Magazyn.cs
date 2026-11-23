@@ -521,11 +521,11 @@ namespace DaneHud
             }
 
             if (cycle % 4 != 0) return;
-            // Algorytm z Isy's Inventory Manager (z poprawką użytkownika v4), przeniesiony 1:1:
-            //  Φ  lista rud: najpierw fixedRefiningList (kolejność z ustawień), potem rudy, których sztabek jest najmniej
-            //  ˤ  pełna rafineria (98%) bez pierwszej dostępnej rudy z listy — cała zawartość wraca do magazynu
-            //  ά  każda ruda wg listy po równo: ceil(suma / liczba rafinerii), nadmiar > 10% wraca
-            //  ˏ  pierwsza ruda z listy, którą rafineria ma, idzie na początek jej kolejki
+            // Te same zasady, które gracze znają z Isy's Inventory Manager (własna implementacja):
+            //  lista rud: najpierw fixedRefiningList (kolejność z ustawień), potem rudy, których sztabek jest najmniej
+            //  pełna rafineria (98%) bez pierwszej dostępnej rudy z listy — cała zawartość wraca do magazynu
+            //  każda ruda wg listy po równo: ceil(suma / liczba rafinerii), nadmiar > 10% wraca
+            //  pierwsza ruda z listy, którą rafineria ma, idzie na początek jej kolejki
             var storage = w.Storage(ItemCat.Ore);
             var ins = refs.Select(r => r.GetInventory(0) as MyInventory).Where(i => i != null).ToList();
             if (ins.Count == 0) return;
@@ -546,7 +546,7 @@ namespace DaneHud
                 ingots.TryGetValue(kv.Key, out var t); ingots[kv.Key] = t + kv.Value;
             }
 
-            // Φ: kolejność rud
+            // kolejność rud
             var prio = (m.OrePriority ?? "").Split(',').Select(z => z.Trim()).Where(z => z.Length > 0).ToList();
             var allOres = AllOreIds();
             var order = new List<MyDefinitionId>();
@@ -560,7 +560,7 @@ namespace DaneHud
             order = order.Where(o => ins.Any(i => i.CheckConstraint(o))).ToList();
             Func<MyDefinitionId, double> amount = id => total.TryGetValue(id, out var v) ? v : 0;
 
-            // ˤ: pierwsza ruda z listy, której jest > 100 — pełna rafineria bez niej oddaje wszystko do magazynu
+            // pierwsza ruda z listy, której jest > 100 — pełna rafineria bez niej oddaje wszystko do magazynu
             var top = order.FirstOrDefault(o => amount(o) > 100);
             PrimaryOre = top.TypeId.IsNull ? "" : Ctx.ItemName(top);
             if (!top.TypeId.IsNull)
@@ -576,7 +576,7 @@ namespace DaneHud
                     }
                 }
 
-            // ά: każda ruda wg listy po równo, nadmiar ponad 10% wraca
+            // każda ruda wg listy po równo, nadmiar ponad 10% wraca
             foreach (var ore in order)
             {
                 double sum = amount(ore);
@@ -608,7 +608,7 @@ namespace DaneHud
                 }
             }
 
-            // ˏ: pierwsza ruda z listy, którą rafineria ma, na początek kolejki
+            // pierwsza ruda z listy, którą rafineria ma, na początek kolejki
             foreach (var inv in ins)
             {
                 var list = inv.GetItems();
@@ -756,12 +756,12 @@ namespace DaneHud
         public string AsmWarning = "";
 
         /// <summary>
-        /// Autocrafting przeniesiony z Isy's Inventory Manager (funkcje ː, Λ/Υ, Σ, Ο, Ρ, β):
-        ///  ː  brak = chciane − jest; kolejkuje tylko, gdy przedmiotu nie ma w żadnej kolejce,
+        /// Autocrafting według tych samych zasad co Isy's Inventory Manager (własna implementacja):
+        ///  brak = chciane − jest; kolejkuje tylko, gdy przedmiotu nie ma w żadnej kolejce,
         ///     gdy jest już dość — zdejmuje go z kolejek
-        ///  Υ  brakującą ilość dzieli po równo na wszystkie montażownie, które umieją ją zrobić (na początek kolejki)
-        ///  Ο  z najbardziej zajętej montażowni część zadań przechodzi do pustych
-        ///  Ρ  przedmioty z priorytetem (P) na początek kolejki, β  inaczej najpierw ten, którego jest najmniej
+        ///  brakującą ilość dzieli po równo na wszystkie montażownie, które umieją ją zrobić (na początek kolejki)
+        ///  z najbardziej zajętej montażowni część zadań przechodzi do pustych
+        ///  przedmioty z priorytetem (P) na początek kolejki, inaczej najpierw ten, którego jest najmniej
         /// </summary>
         void Autocraft(Ctx c, World w, MagazynCfg m)
         {
@@ -773,7 +773,7 @@ namespace DaneHud
             var now = DateTime.UtcNow;
             Func<MyDefinitionId, double> stock = id => items.TryGetValue(id.ToString(), out var h) ? (h?.Amount ?? 0) : 0;
 
-            // ǃ: co jest w kolejkach (w przebiegach) + montażownie z kolejką, które stoją
+            // co jest w kolejkach (w przebiegach) + montażownie z kolejką, które stoją
             var inQueue = new Dictionary<MyDefinitionId, double>();
             var q = new List<Ing.MyProductionItem>();
             var idle = new List<string>();
@@ -791,7 +791,7 @@ namespace DaneHud
             if (idle.Count > 0)
                 AsmWarning = T("Kolejka stoi (brak sztabek?): ", "Queue not moving (no ingots?): ") + string.Join(", ", idle.Take(3)) + (idle.Count > 3 ? " ..." : "");
 
-            // ː: każdy limit
+            // każdy limit
             QueuedNow.Clear();
             var prio = new List<MyDefinitionId>();
             foreach (var quota in m.Quotas)
@@ -821,7 +821,7 @@ namespace DaneHud
                 double runs = Math.Ceiling((wanted - have) / perRun);
                 if (runs < 1) continue;
 
-                // Λ/Υ: po równo na wszystkie montażownie, które umieją to zrobić
+                // po równo na wszystkie montażownie, które umieją to zrobić
                 var able = asms.Where(a =>
                 {
                     try { return a.Mode == Ing.MyAssemblerMode.Assembly && a.CanUseBlueprint(bp.Id); } catch { return false; }
@@ -847,7 +847,7 @@ namespace DaneHud
             SortQueues(asms, prio, stock, now);
         }
 
-        /// <summary>Σ: zdejmuje blueprint ze wszystkich kolejek.</summary>
+        /// <summary>zdejmuje blueprint ze wszystkich kolejek.</summary>
         void RemoveFromQueues(List<Ing.IMyAssembler> asms, MyDefinitionId bp)
         {
             var q = new List<Ing.MyProductionItem>();
@@ -861,7 +861,7 @@ namespace DaneHud
             }
         }
 
-        /// <summary>Ο (splitAssemblerTasks): zadania z najbardziej zajętej montażowni dzielone z pustymi.</summary>
+        /// <summary>zadania z najbardziej zajętej montażowni dzielone z pustymi.</summary>
         void SplitTasks(List<Ing.IMyAssembler> asms, DateTime now)
         {
             if (queueCooldown.TryGetValue("split", out var until) && until > now) return;
@@ -909,7 +909,7 @@ namespace DaneHud
             }
         }
 
-        /// <summary>Ρ + β (sortAssemblerQueue): priorytet na początek, inaczej przedmiot, którego jest najmniej (poniżej 100), albo największe zadanie.</summary>
+        /// <summary>priorytet na początek, inaczej przedmiot, którego jest najmniej (poniżej 100), albo największe zadanie.</summary>
         void SortQueues(List<Ing.IMyAssembler> asms, List<MyDefinitionId> prio, Func<MyDefinitionId, double> stock, DateTime now)
         {
             var q = new List<Ing.MyProductionItem>();

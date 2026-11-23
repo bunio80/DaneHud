@@ -134,7 +134,7 @@ namespace DaneHud
                 case ElementKind.HydrogenBalance: return L.T("Wodór: produkcja / silniki", "Hydrogen: production / thrusters");
                 case ElementKind.Thrust: return L.T("Ciąg silników", "Thrust");
                 case ElementKind.Refineries: return L.T("Rafinerie (jedna linia)", "Refineries (one line)");
-                case ElementKind.Autocrafting: return L.T("Autocrafting Isy", "Isy's autocrafting");
+                case ElementKind.Autocrafting: return "Autocrafting";
                 case ElementKind.LcdText: return L.T("Tekst z LCD (TextLCD)", "Text from LCD (TextLCD)");
                 case ElementKind.Details: return L.T("Informacje bloku (Details)", "Block info (Details)");
                 case ElementKind.CustomData: return L.T("Dane własne bloku (CustomData)", "Block CustomData");
@@ -151,7 +151,7 @@ namespace DaneHud
                 case ElementKind.Distance: return L.T("Odległość do GPS (Distance)", "Distance to GPS");
                 case ElementKind.Property: return L.T("Opcja bloku (Prop)", "Block property (Prop)");
                 case ElementKind.Queue: return L.T("Kolejka montażowni", "Assembler queue");
-                case ElementKind.Magazyn: return L.T("Magazyn: stan i ostatnie ruchy", "Storage: status and recent moves");
+                case ElementKind.Magazyn: return L.T("Logistyka: stan i ostatnie ruchy", "Logistics: status and recent moves");
             }
             return k.ToString();
         }
@@ -184,7 +184,7 @@ namespace DaneHud
                 case ElementKind.Items: return s + ": " + CatName(Category) + f + (Hidden.Count > 0 ? L.T($" (ukryte {Hidden.Count})", $" ({Hidden.Count} hidden)") : "");
                 case ElementKind.CargoBar: return s + ": " + Label + (string.IsNullOrEmpty(Text) ? L.T(" (wszystkie)", " (all)") : " [" + Text + "]");
                 case ElementKind.Tank: return s + ": " + (Gas == "Oxygen" ? L.T("tlen", "oxygen") : L.T("wodór", "hydrogen"));
-                case ElementKind.Autocrafting: return s + (FromPlugin ? L.T(" [Magazyn]", " [Storage]") : "") + (Parts > 1 ? L.T($" część {Part + 1}/{Parts}", $" part {Part + 1}/{Parts}") : L.T(" (całość)", " (all)"));
+                case ElementKind.Autocrafting: return s + (FromPlugin ? L.T(" [Logistyka]", " [Logistics]") : "") + (Parts > 1 ? L.T($" część {Part + 1}/{Parts}", $" part {Part + 1}/{Parts}") : L.T(" (całość)", " (all)"));
                 case ElementKind.LcdText: return s + ": [" + Text + "]";
                 case ElementKind.Details: return s + f + (string.IsNullOrEmpty(StartText) ? "" : " {" + StartText + "}") + (MaxLines > 0 ? " " + MaxLines : "");
                 case ElementKind.Property: return s + f + " " + Property;
@@ -311,7 +311,7 @@ namespace DaneHud
                 case 5:
                     w.Name = "Autocrafting " + (i - 3);
                     w.X = i == 4 ? 76f : 100f; w.Y = 0f; w.Width = 0.24f;
-                    w.ShowTitle = i == 4; w.Title = L.T("Autocrafting Isy", "Isy's autocrafting");
+                    w.ShowTitle = i == 4; w.Title = "Autocrafting";
                     w.TitleColor = w.TextColor = w.ValueColor = "33FF33";
                     w.Elements.Add(new ElementCfg { Kind = ElementKind.Autocrafting, Text = "Autocrafting", Part = i - 4, Parts = 2 });
                     break;
@@ -337,6 +337,13 @@ namespace DaneHud
         public DateTime LastUsed = DateTime.Now;
         public List<WindowCfg> Windows = new List<WindowCfg>();
         public MagazynCfg Magazyn = new MagazynCfg();
+    }
+
+    /// <summary>Nazwany szablon okien (do wczytania w dowolnym gridzie).</summary>
+    public class WindowTemplate
+    {
+        public string Name = "";
+        public List<WindowCfg> Windows = new List<WindowCfg>();
     }
 
     /// <summary>Limit autocraftingu: ile sztuk przedmiotu ma być w gridzie.</summary>
@@ -390,6 +397,7 @@ namespace DaneHud
         public int RefreshTicks = 30;          // co ile klatek liczyć dane (30 = pół sekundy)
         public List<WindowCfg> Windows = new List<WindowCfg>();      // szablon: okna gridów bez własnego profilu
         public List<GridProfile> Grids = new List<GridProfile>();    // profile gridów
+        public List<WindowTemplate> Templates = new List<WindowTemplate>();   // nazwane szablony okien
 
         static void FixWindows(List<WindowCfg> list)
         {
@@ -409,6 +417,7 @@ namespace DaneHud
                     if (e.Text == null) e.Text = "";
                     if (e.Label == null) e.Label = "";
                 }
+                if (w.Title == "Autocrafting Isy" || w.Title == "Isy's autocrafting") w.Title = "Autocrafting";   // stary domyślny tytuł
                 if (w.Scale < 0.2f) w.Scale = 0.62f;
                 if (w.Width < 0.05f) w.Width = 0.22f;
                 if (w.LineSpacing < 0.5f) w.LineSpacing = 1f;
@@ -423,6 +432,14 @@ namespace DaneHud
             Initialized = true;
             FixWindows(Windows);
             Grids.RemoveAll(g => g == null);
+            if (Templates == null) Templates = new List<WindowTemplate>();
+            Templates.RemoveAll(t => t == null);
+            foreach (var t in Templates)
+            {
+                if (t.Name == null) t.Name = "";
+                if (t.Windows == null) t.Windows = new List<WindowCfg>();
+                FixWindows(t.Windows);
+            }
             foreach (var g in Grids)
             {
                 if (g.Windows == null) g.Windows = new List<WindowCfg>();

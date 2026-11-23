@@ -3,14 +3,15 @@ namespace DaneHud
 {
     internal static class RafinerieScript
     {
-        internal const string Text = @"// DaneHud Rafinerie v2 — rafinerie 24/7 (na serwerze). Algorytm rafinerii z Isy's Inventory Manager
+        internal const string Text = @"// Grid HUD & Logistics — Refineries v2: refineries 24/7 on the server (rafinerie 24/7 na serwerze).
+// Same refinery rules as players know from Isy's Inventory Manager (own implementation)
 // (z poprawką „każda ruda po równo”), bez reszty Isy:
 //  1. lista rud: najpierw kolejność z priority=, potem rudy, których sztabek jest najmniej
 //  2. pełna rafineria (98%) bez pierwszej dostępnej rudy z listy oddaje wszystko do magazynu
 //  3. każda ruda wg listy po równo: ceil(suma / liczba rafinerii), nadmiar > 10% wraca
 //  4. pierwsza ruda z listy, którą rafineria ma, idzie na początek kolejki
 //  + sztabki z wyjść rafinerii do kontenerów Ingots (przy wyłączonym konwejerze gra ich nie wypycha)
-// Ustawienia w CustomData (wpisuje je plugin DaneHud, /data » Magazyn):
+// Settings in CustomData (written by the plugin: /data » Logistics):
 //   priority=Uranium, Stone   ores=Ores   ingots=Ingots   skip=!manual, Locked
 
 const string Tag = ""[DaneHud-Rafinerie]"";
@@ -178,7 +179,7 @@ public void Main(string arg, UpdateType src)
 
 void Status()
 {
-    Echo(""DaneHud Rafinerie v2 (algorytm Isy)\nRafinerie: "" + refs.Count + ""\nKontenery rud: "" + ores.Count + "", sztabek: "" + ingots.Count +
+    Echo(""Grid HUD & Logistics: Refineries v2\nRefineries / Rafinerie: "" + refs.Count + ""\nKontenery rud: "" + ores.Count + "", sztabek: "" + ingots.Count +
          ""\nNajpierw: "" + current + ""\nPrzeniesienia: "" + moves);
 }
 ";

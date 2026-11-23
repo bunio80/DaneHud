@@ -471,9 +471,9 @@ namespace DaneHud
             var list = r.Ores.Keys
                 .Select(k => (k, s: r.OreSeconds.TryGetValue(k, out var v) ? v : double.NaN))
                 .OrderBy(x => double.IsNaN(x.s) ? double.MaxValue : x.s)
-                .Select(x => Fmt.Symbol(x.k) + " " + (double.IsNaN(x.s) ? "-" : Fmt.TimeShort(x.s))).ToList();
-            for (int i = 0; i < list.Count; i += 4)
-                Text("  " + string.Join("   ", list.Skip(i).Take(4)), text);
+                .Select(x => Fmt.Symbol(x.k) + " " + (double.IsNaN(x.s) ? "-" : Fmt.TimeShort(x.s).Replace(" ", ""))).ToList();
+            for (int i = 0; i < list.Count; i += 3)
+                Text("  " + string.Join("  ", list.Skip(i).Take(3)), text);
         }
 
         void Queue(ElementCfg e, Ctx c)
@@ -525,8 +525,8 @@ namespace DaneHud
         {
             var m = Plugin.ActiveProfile?.Magazyn;
             var g = Magazyn.I;
-            if (m == null || !m.Enabled) { Pair(T("Magazyn:", "Storage:"), T("wyłączony", "off")); return; }
-            Pair(T("Magazyn:", "Storage:"), g.State, string.IsNullOrEmpty(g.Warning) ? value : warn);
+            if (m == null || !m.Enabled) { Pair(T("Logistyka:", "Logistics:"), T("wyłączony", "off")); return; }
+            Pair(T("Logistyka:", "Logistics:"), g.State, string.IsNullOrEmpty(g.Warning) ? value : warn);
             if (!string.IsNullOrEmpty(g.Warning)) Text(g.Warning, warn);
             Pair(T("Przeniesienia / kolejka:", "Moves / queued:"), g.Moved + " / " + g.Queued);
             if (!string.IsNullOrEmpty(g.ScriptName)) Pair(T("Rafinerie:", "Refineries:"), T("skrypt PB ", "PB script ") + g.ScriptName);
@@ -542,8 +542,8 @@ namespace DaneHud
             if (e.FromPlugin)
             {
                 var own = PluginAuto(c);
-                if (own == null) { Text(T("Brak przedmiotów do pokazania (/data » Magazyn)", "Nothing to show (/data » Storage)"), warn); return; }
-                if (Plugin.ActiveProfile?.Magazyn?.Autocraft != true) Text(T("Autocrafting w Magazynie wyłączony", "Autocrafting in Storage is off"), warn);
+                if (own == null) { Text(T("Brak przedmiotów do pokazania (/data » Logistyka)", "Nothing to show (/data » Logistics)"), warn); return; }
+                if (Plugin.ActiveProfile?.Magazyn?.Autocraft != true) Text(T("Autocrafting w Logistyce wyłączony", "Autocrafting in Logistics is off"), warn);
                 AutoRows(e, own);
                 return;
             }

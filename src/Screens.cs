@@ -155,13 +155,13 @@ namespace DaneHud
         public override void RecreateControls(bool constructor)
         {
             base.RecreateControls(constructor);
-            AddCaption(T("Dane na HUD", "Data on HUD") + "  (DaneHud v" + Plugin.Version + ")");
+            AddCaption("Grid HUD & Logistics  v" + Plugin.Version);
             if (editing != null && !cfg.Grids.Contains(editing)) editing = null;
 
             // ---------------------------------------------------------------- profil
             const float lx = -0.44f;
             float y = -0.385f;
-            var profiles = new List<string> { T("Szablon (gridy bez własnych ustawień)", "Template (grids without own settings)") };
+            var profiles = new List<string> { T("Domyślne (gridy bez własnych ustawień)", "Default (grids without own settings)") };
             profiles.AddRange(cfg.Grids.Select(ProfileName));
             Label(lx, y, T("Ustawienia dla:", "Settings for:"), 0.75f);
             Combo(lx + 0.14f, y, 0.42f, profiles, editing == null ? 0 : cfg.Grids.IndexOf(editing) + 1, v =>
@@ -174,14 +174,10 @@ namespace DaneHud
 
             y += 0.05f;
             Check(lx, y, T("Osobne okna dla każdego grida", "Separate windows for each grid"), cfg.PerGrid, v => { cfg.PerGrid = v; });
+            Button(0.115f, y, T($"Szablony... ({cfg.Templates.Count})", $"Templates... ({cfg.Templates.Count})"),
+                () => MyGuiSandbox.AddScreen(new TemplatesScreen(cfg, () => Wins, () => { sel = 0; selElem = -1; Redraw(); })), 0.2f);
             if (editing != null)
             {
-                Button(0.115f, y, T("Zapisz jako szablon", "Save as template"), () =>
-                {
-                    cfg.Windows = editing.Windows.Select(w => w.Clone()).ToList();
-                    Plugin.Chat(T("Szablon zapisany: nowe gridy dostaną te okna.", "Template saved: new grids will get these windows."));
-                    Redraw();
-                }, 0.2f);
                 Button(0.335f, y, T("Usuń ustawienia grida", "Delete grid settings"), () =>
                 {
                     cfg.Grids.Remove(editing);
@@ -191,7 +187,9 @@ namespace DaneHud
 
             y += 0.05f;
             var sources = new List<string> { T("Domyślne fabryczne (6 okien)", "Factory defaults (6 windows)") };
-            if (editing != null) sources.Add(T("Szablon", "Template"));
+            if (editing != null) sources.Add(T("Domyślne dla nowych gridów", "Default for new grids"));
+            var templates = cfg.Templates.ToList();
+            sources.AddRange(templates.Select(t => T("Szablon: ", "Template: ") + t.Name));
             var srcProfiles = cfg.Grids.Where(g => g != editing).ToList();
             sources.AddRange(srcProfiles.Select(ProfileName));
             loadIdx = Math.Min(loadIdx, sources.Count - 1);
@@ -202,8 +200,16 @@ namespace DaneHud
                 List<WindowCfg> src;
                 int k = loadIdx;
                 if (k == 0) src = WindowCfg.Defaults();
-                else if (editing != null && k == 1) src = cfg.Windows;
-                else src = srcProfiles[k - (editing != null ? 2 : 1)].Windows;
+                else
+                {
+                    k--;
+                    if (editing != null && k == 0) src = cfg.Windows;
+                    else
+                    {
+                        if (editing != null) k--;
+                        src = k < templates.Count ? templates[k].Windows : srcProfiles[k - templates.Count].Windows;
+                    }
+                }
                 var copy = src.Select(w => w.Clone()).ToList();
                 var target = Wins;
                 target.Clear();
@@ -332,10 +338,10 @@ namespace DaneHud
             Label(rx, by, T("Dwuklik na elemencie = jego opcje. Nowy element trafia pod zaznaczony.", "Double-click an element = its options. New elements go below the selected one."), 0.62f);
             by += 0.06f;
             if (editing != null)
-                Button(0.235f, by, T("Magazyn (zamiast Isy): sortowanie, rafinerie, autocrafting...", "Storage (instead of Isy): sorting, refineries, autocrafting..."),
+                Button(0.235f, by, T("Logistyka: sortowanie, rafinerie, autocrafting...", "Logistics: sorting, refineries, autocrafting..."),
                     () => MyGuiSandbox.AddScreen(new MagazynScreen(editing, () => RecreateControls(false))), 0.43f, 0.048f);
             else
-                Label(rx, by, T("Magazyn (zamiast Isy): wybierz u góry ustawienia grida.", "Storage (instead of Isy): pick a grid's settings at the top."), 0.64f);
+                Label(rx, by, T("Logistyka: wybierz u góry ustawienia grida.", "Logistics: pick a grid's settings at the top."), 0.64f);
 
             Button(0f, 0.43f, T("Zapisz", "Save"), () => { cfg.Save(); Plugin.Dirty = true; CloseScreen(false); }, 0.22f, 0.05f);
         }
@@ -614,7 +620,7 @@ namespace DaneHud
                     }); y += row;
                     C(T("Tylko braki (obecnie < chciane)", "Only missing (current < wanted)"), e.OnlyMissing, v => e.OnlyMissing = v);
                     C(T("Nazwy z gry zamiast nazw skryptu", "Game names instead of script names"), e.GameNames, v => e.GameNames = v);
-                    C(T("Limity z Magazynu (pluginu), nie z LCD Isy", "Limits from Storage (plugin), not Isy's LCD"), e.FromPlugin, v => e.FromPlugin = v);
+                    C(T("Limity z Logistyki (pluginu), nie z LCD Isy", "Limits from Logistics (plugin), not Isy's LCD"), e.FromPlugin, v => e.FromPlugin = v);
                     Hint(T("Dane czytane z LCD skryptu Isy (\"Autocrafting\", \"Autocrafting 2\"...).", "Read from Isy's script LCDs (\"Autocrafting\", \"Autocrafting 2\"...)."));
                     Hint(T("Długa lista: dwa okna, część 1 z 2 i część 2 z 2.", "Long list: two windows, part 1 of 2 and part 2 of 2."));
                     break;
@@ -741,7 +747,7 @@ namespace DaneHud
 
                 case ElementKind.Magazyn:
                     LinesBox(T("Ile ostatnich ruchów:", "How many recent moves:"));
-                    Hint(T("Stan modułu Magazyn (/data » Magazyn) i co ostatnio przeniósł.", "Storage module state (/data » Storage) and its recent moves."));
+                    Hint(T("Stan modułu Logistyka (/data » Logistyka) i co ostatnio przeniósł.", "Logistics module state (/data » Logistics) and its recent moves."));
                     break;
 
                 case ElementKind.Queue:
@@ -854,6 +860,105 @@ namespace DaneHud
         {
             Plugin.Dirty = true;
             try { onClose?.Invoke(); } catch { }
+            base.OnClosed();
+        }
+    }
+
+    // ====================================================================== nazwane szablony okien
+
+    internal class TemplatesScreen : DialogBase
+    {
+        readonly Config cfg;
+        readonly Func<List<WindowCfg>> current;   // okna, które teraz edytujesz w menu
+        readonly Action onChange;
+        string info = "";
+
+        public TemplatesScreen(Config cfg, Func<List<WindowCfg>> current, Action onChange) : base(new Vector2(0.8f, 0.8f))
+        {
+            this.cfg = cfg;
+            this.current = current;
+            this.onChange = onChange;
+            EnabledBackgroundFade = true;
+            RecreateControls(true);
+        }
+
+        public override string GetFriendlyName() => "DaneHudTemplates";
+
+        static List<WindowCfg> Copy(List<WindowCfg> l) => l.Select(w => w.Clone()).ToList();
+
+        public override void RecreateControls(bool constructor)
+        {
+            base.RecreateControls(constructor);
+            AddCaption(T("Szablony okien", "Window templates"));
+            Label(-0.37f, -0.32f, string.IsNullOrEmpty(info)
+                ? T("Nazwę zmieniasz w polu tekstowym. „Wczytaj” zastępuje okna, które teraz edytujesz.", "Edit the name in the text box. \"Load\" replaces the windows you are editing now.")
+                : info, 0.62f);
+            Label(-0.37f, -0.27f, T("Nazwa", "Name"), 0.64f);
+            Label(-0.15f, -0.27f, T("Okna", "Windows"), 0.64f);
+
+            float y = -0.22f;
+            const float row = 0.05f;
+            var list = cfg.Templates;
+            if (list.Count == 0) Label(-0.37f, y, T("Brak szablonów. Zapisz pierwszy przyciskiem na dole.", "No templates yet. Save the first one with the button below."), 0.66f);
+            for (int i = 0; i < list.Count && i < 9; i++)
+            {
+                var t = list[i];
+                TextBox(-0.37f, y, 0.2f, t.Name, 40, s => t.Name = s ?? "");
+                Label(-0.15f, y, t.Windows.Count.ToString(), 0.66f);
+                Button(-0.05f, y, T("Wczytaj", "Load"), () =>
+                {
+                    var target = current();
+                    target.Clear();
+                    target.AddRange(Copy(t.Windows));
+                    info = T("Wczytano: ", "Loaded: ") + t.Name;
+                    onChange?.Invoke();
+                    RecreateControls(false);
+                }, 0.1f, 0.036f);
+                Button(0.075f, y, T("Nadpisz", "Overwrite"), () =>
+                {
+                    t.Windows = Copy(current());
+                    info = T("Zapisano obecne okna do: ", "Current windows saved to: ") + t.Name;
+                    Plugin.Dirty = true;
+                    RecreateControls(false);
+                }, 0.11f, 0.036f);
+                Button(0.2f, y, T("Domyślny", "Default"), () =>
+                {
+                    cfg.Windows = Copy(t.Windows);
+                    info = T("Nowe gridy dostaną okna z: ", "New grids will get the windows from: ") + t.Name;
+                    Plugin.Dirty = true;
+                    onChange?.Invoke();
+                    RecreateControls(false);
+                }, 0.11f, 0.036f);
+                Button(0.315f, y, T("Usuń", "Delete"), () =>
+                {
+                    cfg.Templates.Remove(t);
+                    info = T("Usunięto: ", "Deleted: ") + t.Name;
+                    Plugin.Dirty = true;
+                    RecreateControls(false);
+                }, 0.09f, 0.036f);
+                y += row;
+            }
+            if (list.Count >= 9) Label(-0.37f, y, T("(maks. 9 szablonów)", "(max. 9 templates)"), 0.62f);
+
+            if (list.Count < 9)
+                Button(-0.12f, 0.29f, T("Nowy szablon z obecnych okien", "New template from current windows"), () =>
+                {
+                    int n = cfg.Templates.Count + 1;
+                    string name;
+                    do name = T("Szablon ", "Template ") + n++; while (cfg.Templates.Any(x => x.Name == name));
+                    cfg.Templates.Add(new WindowTemplate { Name = name, Windows = Copy(current()) });
+                    info = T("Zapisano: ", "Saved: ") + name + T(" (nazwę możesz zmienić)", " (you can rename it)");
+                    Plugin.Dirty = true;
+                    RecreateControls(false);
+                }, 0.34f, 0.045f);
+            Button(0.22f, 0.29f, "OK", () => CloseScreen(false), 0.16f, 0.045f);
+        }
+
+        protected override void OnClosed()
+        {
+            Plugin.Cfg?.Save();
+            Plugin.Dirty = true;
+            try { onChange?.Invoke(); } catch { }
             base.OnClosed();
         }
     }

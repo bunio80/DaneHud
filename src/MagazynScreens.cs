@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -34,11 +34,11 @@ namespace DaneHud
         {
             base.RecreateControls(constructor);
             var m = M;
-            AddCaption(T("Magazyn: ", "Storage: ") + g.GridName);
+            AddCaption(T("Logistyka: ", "Logistics: ") + g.GridName);
             const float x = -0.39f, row = 0.042f;
             float y = -0.4f;
 
-            Check(x, y, T("Magazyn włączony dla tego grida", "Storage enabled for this grid"), m.Enabled, v => m.Enabled = v); y += row * 0.8f;
+            Check(x, y, T("Logistyka włączona dla tego grida", "Logistics enabled for this grid"), m.Enabled, v => m.Enabled = v); y += row * 0.8f;
             Label(x + 0.035f, y, T("Działa, gdy siedzisz w tym gridzie. Wyłącz wtedy PB Isy (inaczej będą się kłócić).", "Works while you sit in this grid. Turn Isy's PB off then (or they will fight)."), 0.64f); y += row;
 
             // --- sortowanie
@@ -60,7 +60,7 @@ namespace DaneHud
 
             // --- rafinerie
             Check(x, y, T("Rafinerie: każda ruda po równo we wszystkich", "Refineries: every ore split equally"), m.Refineries, v => m.Refineries = v); y += row * 0.8f;
-            Label(x + 0.035f, y, T("Na czas pracy rafinerie nie pobierają rudy z konwejera (jak Twój Isy v4); gdy wstaniesz — pobierają znowu.", "While running, refineries don't pull ore themselves (like your Isy v4); when you stand up they do again."), 0.62f); y += row * 0.8f;
+            Label(x + 0.035f, y, T("Na czas pracy rafinerie nie pobierają rudy z konwejera; gdy wstaniesz — pobierają znowu.", "While running, refineries don't pull ore themselves; when you stand up they do again."), 0.62f); y += row * 0.8f;
             Label(x + 0.035f, y, T("Kolejność rud:", "Ore order:"), 0.7f);
             string order = string.IsNullOrWhiteSpace(m.OrePriority) ? T("(brak — po równo wg ilości)", "(none — by amount)") : m.OrePriority;
             Button(x + 0.4f, y, order + "  ...", () => MyGuiSandbox.AddScreen(new OrePriorityScreen(m, () => RecreateControls(false))), 0.42f); y += row;
@@ -364,7 +364,7 @@ namespace DaneHud
             AddCaption(T("Limity autocraftingu: ", "Autocrafting limits: ") + g.GridName);
             Label(-0.39f, -0.39f, T("Rodzaj:", "Kind:"), 0.72f);
             Combo(-0.31f, -0.39f, 0.22f, Cats.Select(ElementCfg.CatName).ToList(), cat, v => { cat = v; RecreateControls(false); });
-            Button(0.1f, -0.39f, T("Importuj z LCD Isy", "Import from Isy's LCD"), () =>
+            Button(0.07f, -0.39f, T("Importuj z LCD Isy", "Import from Isy's LCD"), () =>
             {
                 Ctx c = null;
                 try { c = Ctx.Collect(); } catch { }
@@ -374,14 +374,14 @@ namespace DaneHud
                               : T($"Wczytano {n} limitów", $"Imported {n} limits") + (unknown > 0 ? T($", nierozpoznane: {unknown}", $", unrecognized: {unknown}") : "");
                 Plugin.Dirty = true;
                 RecreateControls(false);
-            }, 0.22f);
-            Button(0.32f, -0.39f, T("Wyzeruj ten rodzaj", "Clear this kind"), () =>
+            }, 0.2f);
+            Button(0.285f, -0.39f, T("Wyzeruj ten rodzaj", "Clear this kind"), () =>
             {
                 var keys = new HashSet<string>(Defs(false).Select(d => d.Id.ToString()));
                 m.Quotas.RemoveAll(q => keys.Contains(q.Id));
                 Plugin.Dirty = true;
                 RecreateControls(false);
-            }, 0.2f);
+            }, 0.19f);
             Check(-0.39f, -0.345f, T("Tylko z limitem", "Only with a limit"), onlySet, v => { onlySet = v; RecreateControls(false); });
             Label(-0.15f, -0.345f, string.IsNullOrEmpty(info)
                 ? T("Limit = ile ma być (puste = 0). ^^ ^ v vv = kolejność na HUD.", "Limit = how many (empty = 0). ^^ ^ v vv = HUD order.")

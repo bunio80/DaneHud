@@ -23,7 +23,7 @@ namespace DaneHud
 
     public class Plugin : IPlugin
     {
-        internal const string Version = "12";
+        internal const string Version = "13";
         internal static Config Cfg;
         internal static volatile Snapshot Shown;      // okna i wiersze do narysowania (null = nic)
         internal static bool Seated;
@@ -179,7 +179,7 @@ namespace DaneHud
 
         internal static void Chat(string msg)
         {
-            try { MyAPIGateway.Utilities?.ShowMessage("Dane", msg); } catch { }
+            try { MyAPIGateway.Utilities?.ShowMessage("Grid HUD", msg); } catch { }
         }
 
         // ------------------------------------------------------------------ log
