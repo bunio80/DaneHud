@@ -386,6 +386,9 @@ namespace DaneHud
             public double MaxSeconds;
             /// <summary>Ruda » ile sekund zajmie przerobienie tylko tej rudy (najdłużej w jednej rafinerii, bez czekania w kolejce).</summary>
             public readonly Dictionary<string, double> OreSeconds = new Dictionary<string, double>();
+            /// <summary>Ruda » najwcześniejsze miejsce w kolejce którejś rafinerii (0 = przerabiana teraz) i suma miejsc (remis).</summary>
+            public readonly Dictionary<string, int> OreFirstPos = new Dictionary<string, int>();
+            public readonly Dictionary<string, int> OrePosSum = new Dictionary<string, int>();
             public readonly Dictionary<string, double> Ores = new Dictionary<string, double>();
         }
 
@@ -435,13 +438,22 @@ namespace DaneHud
                 if (inv == null) continue;
                 double secs = 0;
                 var own = new Dictionary<string, double>();   // czas samej rudy w tej rafinerii
+                int pos = 0;
                 foreach (var it in inv.GetItems())
                 {
                     var id = new MyDefinitionId(it.Content.TypeId, it.Content.SubtypeId);
                     if (id.TypeId.ToString() != "MyObjectBuilder_Ore") continue;
+                    if (enabled && !own.ContainsKey(id.SubtypeName))
+                    {
+                        if (!r.OreFirstPos.TryGetValue(id.SubtypeName, out var fp) || pos < fp) r.OreFirstPos[id.SubtypeName] = pos;
+                        r.OrePosSum.TryGetValue(id.SubtypeName, out var ps);
+                        r.OrePosSum[id.SubtypeName] = ps + pos;
+                        pos++;
+                    }
                     double amount = (double)(float)it.Amount;
                     r.Ores.TryGetValue(id.SubtypeName, out var have);
                     r.Ores[id.SubtypeName] = have + amount;
+                    if (!own.ContainsKey(id.SubtypeName)) own[id.SubtypeName] = 0;
                     var bp = FindBlueprint(def, id);
                     if (bp == null || speed <= 0) continue;
                     double per = (double)(float)bp.Prerequisites[0].Amount;
@@ -454,6 +466,7 @@ namespace DaneHud
                 if (enabled)
                     foreach (var kv in own)
                     {
+                        if (kv.Value <= 0) continue;
                         r.OreSeconds.TryGetValue(kv.Key, out var done);
                         if (kv.Value > done) r.OreSeconds[kv.Key] = kv.Value;
                     }

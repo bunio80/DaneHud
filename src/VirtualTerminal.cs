@@ -43,8 +43,9 @@ namespace DaneHud
             catch (Exception e) { MyLog.Default.WriteLine("DaneHud: virtual terminal patch failed: " + e); }
         }
 
-        static bool Prefix(BitStream stream)
+        static bool Prefix(BitStream stream, bool __runOriginal)
         {
+            if (!__runOriginal) return false;          // inny plugin już zapisał kontekst w tej wiadomości
             long id = EntityId;
             if (id == 0) return true;
             try

@@ -71,6 +71,20 @@ namespace DaneHud
         }
 
         /// <summary>Krótszy czas do jednej linii rafinerii ("5h 12m").</summary>
+        /// <summary>Czas bez sekund: 2d 5h, 5h11m, 49m, &lt;1m (sep = odstęp między liczbami).</summary>
+        public static string TimeHM(double seconds, string sep)
+        {
+            if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0) return "-";
+            long s = (long)Math.Round(seconds);
+            if (s < 60) return "<1m";
+            long d = s / 86400; s %= 86400;
+            long h = s / 3600; s %= 3600;
+            long m = s / 60;
+            if (d > 0) return $"{d}d{sep}{h}h";
+            if (h > 0) return $"{h}h{sep}{m}m";
+            return $"{m}m";
+        }
+
         public static string TimeShort(double seconds)
         {
             if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0) return "-";

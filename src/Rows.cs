@@ -466,12 +466,12 @@ namespace DaneHud
             if (r.Large > 0 && r.Small > 0) head += $"  {r.Large}L {r.Small}S";
             else head += r.Large > 0 ? "  L" : "  S";
             if (r.Ores.Count == 0) { Pair(head, T("puste", "empty"), warn); return; }
-            Pair(head, Fmt.TimeShort(r.MaxSeconds));
-            // 2. linia: każda ruda i ile czasu zajmie jej przerobienie (najkrótsza pierwsza)
+            Pair(head, Fmt.TimeHM(r.MaxSeconds, " "));
+            // 2. linia: rudy w kolejności kolejki (najpierw ta, którą rafinerie przerabiają teraz) i czas samej tej rudy
             var list = r.Ores.Keys
-                .Select(k => (k, s: r.OreSeconds.TryGetValue(k, out var v) ? v : double.NaN))
-                .OrderBy(x => double.IsNaN(x.s) ? double.MaxValue : x.s)
-                .Select(x => Fmt.Symbol(x.k) + " " + (double.IsNaN(x.s) ? "-" : Fmt.TimeShort(x.s).Replace(" ", ""))).ToList();
+                .OrderBy(k => r.OreFirstPos.TryGetValue(k, out var p) ? p : int.MaxValue)
+                .ThenBy(k => r.OrePosSum.TryGetValue(k, out var p) ? p : int.MaxValue)
+                .Select(k => Fmt.Symbol(k) + " " + (r.OreSeconds.TryGetValue(k, out var s) ? Fmt.TimeHM(s, "") : "-")).ToList();
             for (int i = 0; i < list.Count; i += 3)
                 Text("  " + string.Join("  ", list.Skip(i).Take(3)), text);
         }
