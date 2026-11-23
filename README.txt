@@ -1,11 +1,16 @@
 =====================================================================================================
-DaneHud v6 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
+DaneHud v7 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
 =====================================================================================================
 
 Okna z danymi grida, w którym siedzisz, rysowane na HUD (zamiast Automatic LCDs 2 + HudLcd), oraz
 MAGAZYN — części skryptu Isy wykonywane przez plugin, bez programowalnego bloku.
 
 Polecenia czatu: /data — ustawienia; /data ukryj | pokaz; /data pl | en  (stare /dane nadal działa).
+
+Nowe w v7:
+  * Rafinerie wg algorytmu Isy (z poprawką v4), w pluginie i w skrypcie PB: lista rud = kolejność z ustawień,
+    potem rudy z najmniejszym zapasem sztabek; pełna rafineria bez pierwszej dostępnej rudy oddaje wszystko;
+    każda ruda po równo; pierwsza ruda z listy na początek kolejki rafinerii. (v6 nie robił miejsca dla rudy z listy.)
 
 Nowe w v6:
   * Rafinerie 24/7: lekki skrypt PB (Rafinerie_PB.cs.txt, ok. 6 tys. znaków) — każda ruda po równo we wszystkich
@@ -51,7 +56,7 @@ Nowe w v3:
   * Krótsze podpisy w oknach, poprawione zużycie H2 silników wodorowych (prąd).
 
 =====================================================================================================
-DaneHud v6 — Pulsar (Legacy) plugin for Space Engineers
+DaneHud v7 — Pulsar (Legacy) plugin for Space Engineers
 =====================================================================================================
 
 Windows with data of the grid you sit in, drawn on the HUD (instead of Automatic LCDs 2 + HudLcd), plus

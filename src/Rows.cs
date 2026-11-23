@@ -506,6 +506,8 @@ namespace DaneHud
             Pair(T("Magazyn:", "Storage:"), g.State, string.IsNullOrEmpty(g.Warning) ? value : warn);
             if (!string.IsNullOrEmpty(g.Warning)) Text(g.Warning, warn);
             Pair(T("Przeniesienia / kolejka:", "Moves / queued:"), g.Moved + " / " + g.Queued);
+            if (!string.IsNullOrEmpty(g.ScriptName)) Pair(T("Rafinerie:", "Refineries:"), T("skrypt PB ", "PB script ") + g.ScriptName);
+            else if (!string.IsNullOrEmpty(g.PrimaryOre)) Pair(T("Rafinerie najpierw:", "Refining first:"), g.PrimaryOre);
             if (g.Unreachable.Count > 0)
                 Text(T("Bez konwejera: ", "No conveyor: ") + string.Join(", ", g.Unreachable.Take(4)) + (g.Unreachable.Count > 4 ? " ..." : ""), warn);
             for (int i = 0; i < Limit(e, g.Recent.Count); i++) Text("  " + g.Recent[i], text);

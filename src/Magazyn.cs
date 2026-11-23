@@ -91,6 +91,7 @@ namespace DaneHud
 
         internal const string ScriptTag = "[DaneHud-Rafinerie]";
         public string ScriptName = "";
+        public string PrimaryOre = "";
 
         /// <summary>Działający PB z naszym skryptem rafinerii (znacznik w CustomData).</summary>
         internal static Ing.IMyProgrammableBlock RefineryScript(Ctx c)
@@ -390,6 +391,19 @@ namespace DaneHud
                 Specials.Sort((a, b2) => a.Priority.CompareTo(b2.Priority));
             }
 
+            /// <summary>Sztabki w kontenerach (subtype → ilość).</summary>
+            public Dictionary<string, double> IngotsIn()
+            {
+                var d = new Dictionary<string, double>();
+                foreach (var x in Cargo)
+                    foreach (var it in x.I.GetItems())
+                        if (it.Content.TypeId.ToString() == "MyObjectBuilder_Ingot")
+                        {
+                            d.TryGetValue(it.Content.SubtypeName, out var v); d[it.Content.SubtypeName] = v + (double)it.Amount;
+                        }
+                return d;
+            }
+
             public bool IsLocked(string name)
             {
                 foreach (var k in locked) if (name.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0) return true;
@@ -502,64 +516,130 @@ namespace DaneHud
             }
 
             if (cycle % 4 != 0) return;
+            // Algorytm z Isy's Inventory Manager (z poprawką użytkownika v4), przeniesiony 1:1:
+            //  Φ  lista rud: najpierw fixedRefiningList (kolejność z ustawień), potem rudy, których sztabek jest najmniej
+            //  ˤ  pełna rafineria (98%) bez pierwszej dostępnej rudy z listy — cała zawartość wraca do magazynu
+            //  ά  każda ruda wg listy po równo: ceil(suma / liczba rafinerii), nadmiar > 10% wraca
+            //  ˏ  pierwsza ruda z listy, którą rafineria ma, idzie na początek jej kolejki
             var storage = w.Storage(ItemCat.Ore);
-            var totals = new Dictionary<MyDefinitionId, double>();
-            foreach (var s in storage)
-                foreach (var it in s.I.GetItems())
+            var ins = refs.Select(r => r.GetInventory(0) as MyInventory).Where(i => i != null).ToList();
+            if (ins.Count == 0) return;
+            Func<MyInventory, bool> hasSpace = i => (double)i.CurrentVolume < (double)i.MaxVolume * 0.98;   // ư(inventoryFullBuffer)
+
+            // ile jest każdej rudy (magazyn + rafinerie) i sztabek
+            var total = new Dictionary<MyDefinitionId, double>();
+            var ingots = new Dictionary<string, double>();
+            foreach (var x in storage.Select(z => z.I).Concat(ins))
+                foreach (var it in x.GetItems())
                 {
                     var id = new MyDefinitionId(it.Content.TypeId, it.Content.SubtypeId);
                     if (id.TypeId.ToString() != "MyObjectBuilder_Ore") continue;
-                    totals.TryGetValue(id, out var t); totals[id] = t + (double)it.Amount;
+                    total.TryGetValue(id, out var t); total[id] = t + (double)it.Amount;
                 }
-            var ins = refs.Select(r => r.GetInventory(0) as MyInventory).ToList();
-            foreach (var inv in ins)
-                foreach (var it in inv.GetItems())
-                {
-                    var id = new MyDefinitionId(it.Content.TypeId, it.Content.SubtypeId);
-                    totals.TryGetValue(id, out var t); totals[id] = t + (double)it.Amount;
-                }
-
-            var prio = (m.OrePriority ?? "").Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
-            var ores = totals.Keys
-                .OrderBy(id => { int i = prio.FindIndex(p => string.Equals(p, id.SubtypeName, StringComparison.OrdinalIgnoreCase)); return i < 0 ? 999 : i; })
-                .ThenByDescending(id => totals[id]).ToList();
-
-            foreach (var ore in ores)
+            foreach (var kv in w.IngotsIn())
             {
-                var able = ins.Where(i => i.CheckConstraint(ore)).ToList();
-                if (able.Count == 0) continue;
-                double target = totals[ore] / able.Count;
-                // nadmiar wraca do magazynu (np. gra sama wrzuciła rudę do jednej rafinerii)
-                foreach (var inv in able)
+                ingots.TryGetValue(kv.Key, out var t); ingots[kv.Key] = t + kv.Value;
+            }
+
+            // Φ: kolejność rud
+            var prio = (m.OrePriority ?? "").Split(',').Select(z => z.Trim()).Where(z => z.Length > 0).ToList();
+            var allOres = AllOreIds();
+            var order = new List<MyDefinitionId>();
+            foreach (var name in prio)
+            {
+                var id = allOres.FirstOrDefault(o => string.Equals(o.SubtypeName, name, StringComparison.OrdinalIgnoreCase));
+                if (id.TypeId.IsNull == false && !order.Contains(id)) order.Add(id);
+            }
+            foreach (var id in allOres.Where(o => !order.Contains(o)).OrderBy(o => ingots.TryGetValue(o.SubtypeName, out var v) ? v : 0))
+                order.Add(id);
+            order = order.Where(o => ins.Any(i => i.CheckConstraint(o))).ToList();
+            Func<MyDefinitionId, double> amount = id => total.TryGetValue(id, out var v) ? v : 0;
+
+            // ˤ: pierwsza ruda z listy, której jest > 100 — pełna rafineria bez niej oddaje wszystko do magazynu
+            var top = order.FirstOrDefault(o => amount(o) > 100);
+            PrimaryOre = top.TypeId.IsNull ? "" : Ctx.ItemName(top);
+            if (!top.TypeId.IsNull)
+                foreach (var inv in ins)
                 {
-                    double have = (double)inv.GetItemAmount(ore);
-                    if (have > target * 1.25 && have - target > 500)
+                    if (budget <= 0) break;
+                    if (hasSpace(inv) || (double)inv.GetItemAmount(top) > 0) continue;
+                    foreach (var item in inv.GetItems().ToList())
                     {
-                        var item = inv.GetItems().FirstOrDefault(x => x.Content.TypeId == ore.TypeId && x.Content.SubtypeId == ore.SubtypeId);
-                        var dst = storage.FirstOrDefault(s => s.Fill < 0.99);
-                        if (dst != null && item.Amount > 0) Move(inv, item, dst.I, have - target, T("nadmiar rudy", "ore excess"));
+                        var dst = storage.FirstOrDefault(z => z.Fill < 0.99);
+                        if (dst == null || budget <= 0) break;
+                        Move(inv, item, dst.I, (double)item.Amount, T("miejsce dla ", "room for ") + Ctx.ItemName(top));
                     }
                 }
-                // brak — dokładamy z magazynu
-                foreach (var inv in able)
+
+            // ά: każda ruda wg listy po równo, nadmiar ponad 10% wraca
+            foreach (var ore in order)
+            {
+                double sum = amount(ore);
+                if (sum <= 0) continue;
+                double share = Math.Ceiling(sum / ins.Count);
+                foreach (var inv in ins)
                 {
-                    double have = (double)inv.GetItemAmount(ore);
-                    double need = target - have;
-                    if (need < Math.Max(50, target * 0.15)) continue;
-                    // pełna rafineria: dosypujemy dopiero, gdy zużyje 10% (nie po 30 kg co chwilę)
-                    if ((double)inv.MaxVolume > 0 && (double)inv.CurrentVolume / (double)inv.MaxVolume > 0.9) continue;
-                    foreach (var s in storage)
+                    if (budget <= 0) return;
+                    double need = share - (double)inv.GetItemAmount(ore);
+                    if (need < -1 - share * 0.1)
                     {
-                        if (need <= 0 || budget <= 0) break;
-                        foreach (var item in s.I.GetItems().Where(x => x.Content.TypeId == ore.TypeId && x.Content.SubtypeId == ore.SubtypeId).ToList())
+                        var item = inv.GetItems().FirstOrDefault(z => z.Content.TypeId == ore.TypeId && z.Content.SubtypeId == ore.SubtypeId);
+                        var dst = storage.FirstOrDefault(z => z.Fill < 0.99);
+                        if (dst != null && item.Amount > 0) Move(inv, item, dst.I, -need, T("nadmiar rudy", "ore excess"));
+                        continue;
+                    }
+                    if (!hasSpace(inv)) continue;
+                    // plugin wysyła żądania przez sieć: nie dosypuj po kilka kg (Isy na serwerze może)
+                    if (need < Math.Max(50, share * 0.05)) continue;
+                    foreach (var src in storage)
+                    {
+                        if (need <= 1 || budget <= 0) break;
+                        foreach (var item in src.I.GetItems().Where(z => z.Content.TypeId == ore.TypeId && z.Content.SubtypeId == ore.SubtypeId).ToList())
                         {
-                            double moved = Move(s.I, item, inv, need, T("równy podział rudy", "ore balancing"));
-                            need -= moved;
-                            if (need <= 0) break;
+                            need -= Move(src.I, item, inv, need, T("równy podział rudy", "ore balancing"));
+                            if (need <= 1) break;
                         }
                     }
                 }
             }
+
+            // ˏ: pierwsza ruda z listy, którą rafineria ma, na początek kolejki
+            foreach (var inv in ins)
+            {
+                var list = inv.GetItems();
+                if (list.Count < 2) continue;
+                int idx = -1;
+                foreach (var ore in order)
+                {
+                    idx = list.FindIndex(z => z.Content.TypeId == ore.TypeId && z.Content.SubtypeId == ore.SubtypeId);
+                    if (idx >= 0) break;
+                }
+                if (idx <= 0) continue;
+                string key = "order:" + inv.Entity.EntityId;
+                if (cooldown.TryGetValue(key, out var until) && until > DateTime.UtcNow) continue;
+                try
+                {
+                    MyInventory.TransferByUser(inv, inv, list[idx].ItemId, 0, null);
+                    cooldown[key] = DateTime.UtcNow.AddSeconds(4);
+                    Note(Ctx.ItemName(new MyDefinitionId(list[idx].Content.TypeId, list[idx].Content.SubtypeId)) + T(" na początek kolejki: ", " to the front: ") + Ctx.NameOf((MyCubeBlock)inv.Entity));
+                }
+                catch (Exception e) { Plugin.LogOnce("order", e); }
+            }
+        }
+
+        static List<MyDefinitionId> oreIds;
+
+        /// <summary>Wszystkie rudy z definicji gry i modów.</summary>
+        static List<MyDefinitionId> AllOreIds()
+        {
+            if (oreIds != null) return oreIds;
+            try
+            {
+                oreIds = MyDefinitionManager.Static.GetPhysicalItemDefinitions()
+                    .Where(d => d != null && d.Public && d.Id.TypeId.ToString() == "MyObjectBuilder_Ore").Select(d => d.Id).ToList();
+            }
+            catch { oreIds = new List<MyDefinitionId>(); }
+            return oreIds;
         }
 
         // ------------------------------------------------------------------ lód i uran
