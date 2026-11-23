@@ -49,6 +49,12 @@ namespace DaneHud
             Label(x + 0.035f, y, T("Pomijane bloki:", "Skipped blocks:"), 0.7f);
             TextBox(x + 0.2f, y, 0.55f, m.LockedKw, 300, v => m.LockedKw = v); y += row;
 
+            // --- kontenery specjalne
+            Check(x, y, T("Kontenery specjalne, słowo w nazwie:", "Special containers, keyword:"), m.Specials, v => m.Specials = v);
+            TextBox(x + 0.38f, y, 0.12f, m.SpecialKw, 40, v => m.SpecialKw = v);
+            Check(x + 0.53f, y, T("biorą z niższych [p]", "take from lower [p]"), m.SpecialSteal, v => m.SpecialSteal = v); y += row * 0.8f;
+            Label(x + 0.035f, y, T("Jak u Isy: zawartość w CustomData (item=100, 100M, 100L, All), priorytet [p1] [pmax] [pmin] w nazwie.", "Like Isy: contents in CustomData (item=100, 100M, 100L, All), priority [p1] [pmax] [pmin] in the name."), 0.62f); y += row;
+
             // --- rafinerie
             Check(x, y, T("Rafinerie: każda ruda po równo we wszystkich", "Refineries: every ore split equally"), m.Refineries, v => m.Refineries = v); y += row * 0.8f;
             Label(x + 0.035f, y, T("Na czas pracy rafinerie nie pobierają rudy z konwejera (jak Twój Isy v4); gdy wstaniesz — pobierają znowu.", "While running, refineries don't pull ore themselves (like your Isy v4); when you stand up they do again."), 0.62f); y += row * 0.8f;
@@ -68,7 +74,7 @@ namespace DaneHud
             Button(0.2f, y, T($"Limity autocraftingu... ({set})", $"Autocrafting limits... ({set})"), () => MyGuiSandbox.AddScreen(new QuotaScreen(g, () => RecreateControls(false))), 0.3f); y += row;
 
             Label(x, y, T("Przeniesień na sekundę:", "Moves per second:"), 0.7f);
-            Number(x + 0.2f, y, 0.08f, m.MovesPerSecond, v => m.MovesPerSecond = (int)Math.Max(2, Math.Min(60, v))); y += row * 1.3f;
+            Number(x + 0.2f, y, 0.08f, m.MovesPerSecond, v => m.MovesPerSecond = (int)Math.Max(2, Math.Min(60, v))); y += row * 1.1f;
 
             // --- stan
             var mg = Magazyn.I;
@@ -76,7 +82,7 @@ namespace DaneHud
             Label(x, y, T("Stan: ", "State: ") + (!m.Enabled ? T("wyłączony", "off") : !here ? T("usiądź w tym gridzie, żeby ruszył", "sit in this grid to start it") : mg.State)
                 + "   " + T("przeniesienia: ", "moves: ") + mg.Moved + "   " + T("kolejka: ", "queued: ") + mg.Queued, 0.7f); y += row * 0.8f;
             if (!string.IsNullOrEmpty(mg.Warning)) { var l = Label(x, y, mg.Warning, 0.7f); l.ColorMask = new Vector4(1f, 0.35f, 0.35f, 1f); y += row * 0.8f; }
-            foreach (var r in mg.Recent.Take(4)) { Label(x, y, r, 0.6f); y += row * 0.6f; }
+            foreach (var r in mg.Recent.Take(3)) { Label(x, y, r, 0.6f); y += row * 0.6f; }
 
             Button(0f, 0.43f, "OK", () => CloseScreen(false), 0.18f, 0.048f);
         }

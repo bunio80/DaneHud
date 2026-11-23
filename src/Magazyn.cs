@@ -60,6 +60,7 @@ namespace DaneHud
             if (m.Refineries) Refineries(w, m);
             if (m.Ice && cycle % 6 == 1) Ice(w, m);
             if (m.Uranium && cycle % 6 == 3) Uranium(w, m);
+            if (m.Specials && cycle % 4 == 2) Specials(w, m);
             if (m.Sort) Sort(w);
             if (m.Autocraft && cycle % 10 == 5) Autocraft(c, w, m);
             if (cycle % 120 == 0) { Prune(cooldown); Prune(queueCooldown); }
@@ -104,6 +105,132 @@ namespace DaneHud
             public double Fill => (double)I.MaxVolume > 0 ? (double)I.CurrentVolume / (double)I.MaxVolume : 1;
         }
 
+        // ------------------------------------------------------------------ kontenery specjalne (format Isy)
+
+        internal const string SpecialHeader = "Special Container modes:";
+
+        class Rule
+        {
+            public MyDefinitionId Id;
+            public double Amount;
+            public char Mode;       // N = trzymaj tyle i oddawaj nadmiar, M = minimum, L = tylko oddawaj nadmiar, A = wszystko
+        }
+
+        class Special
+        {
+            public readonly Inv Inv;
+            public readonly int Priority;
+            public readonly List<Rule> Rules = new List<Rule>();
+            public readonly bool HasHeader;
+
+            static readonly System.Text.RegularExpressions.Regex PrioRx =
+                new System.Text.RegularExpressions.Regex(@"\[p(\d+|max|min)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            public Special(Inv inv)
+            {
+                Inv = inv;
+                var pm = PrioRx.Match(inv.Name);
+                string p = pm.Success ? pm.Groups[1].Value.ToLowerInvariant() : "";
+                Priority = p == "max" ? int.MinValue : p == "min" ? int.MaxValue : int.TryParse(p, out var n) ? n : 1000000;
+                string cd = (inv.Block as Ing.IMyTerminalBlock)?.CustomData ?? "";
+                HasHeader = cd.Contains(SpecialHeader);
+                bool body = !HasHeader;       // bez nagłówka Isy: czytamy wszystkie linie przedmiot=ilość
+                foreach (var raw in cd.Replace("\r", "").Split('\n'))
+                {
+                    var line = raw.Trim();
+                    if (!body) { if (line.Contains(SpecialHeader)) body = true; continue; }
+                    if (line.Length == 0 || line.StartsWith("-")) continue;
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string key = line.Substring(0, eq).Trim(), val = line.Substring(eq + 1).Trim();
+                    if (!key.StartsWith("MyObjectBuilder_")) key = "MyObjectBuilder_" + key;
+                    if (!MyDefinitionId.TryParse(key, out var id)) continue;
+                    var r = new Rule { Id = id, Mode = 'N' };
+                    if (val.Equals("All", StringComparison.OrdinalIgnoreCase)) r.Mode = 'A';
+                    else
+                    {
+                        char last = val.Length > 0 ? char.ToUpperInvariant(val[val.Length - 1]) : ' ';
+                        if (last == 'M' || last == 'L') { r.Mode = last; val = val.Substring(0, val.Length - 1); }
+                        if (!double.TryParse(val.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out r.Amount)) continue;
+                        if (r.Amount <= 0) continue;
+                    }
+                    Rules.Add(r);
+                }
+            }
+
+            public Rule RuleFor(MyDefinitionId id) => Rules.FirstOrDefault(r => r.Id == id);
+        }
+
+        /// <summary>Szablon CustomData jak u Isy: lista przedmiotów z =0 do uzupełnienia.</summary>
+        static string SpecialTemplate(string existing)
+        {
+            var sb = new System.Text.StringBuilder();
+            existing = (existing ?? "").TrimEnd();
+            if (existing.Length > 0) sb.Append(existing).Append("\n\n");
+            sb.Append("@").Append(SpecialHeader).Append("\n\n");
+            sb.Append("- Normal: stores wanted amount, removes excess. Usage: item=100\n");
+            sb.Append("- Minimum: stores wanted amount, ignores excess. Usage: item=100M\n");
+            sb.Append("- Limiter: doesn't store items, only removes excess. Usage: item=100L\n");
+            sb.Append("- All: stores all items it can get until it's full. Usage: item=All\n\n");
+            var cats = new[] { ItemCat.Component, ItemCat.Ingot, ItemCat.Ore, ItemCat.Ammo, ItemCat.Tool, ItemCat.Bottle };
+            try
+            {
+                foreach (var cat in cats)
+                    foreach (var d in MyDefinitionManager.Static.GetPhysicalItemDefinitions()
+                                 .Where(d => d.Public && Ctx.CatOf(d.Id.TypeId.ToString()) == cat).OrderBy(d => d.Id.SubtypeName))
+                        sb.Append(d.Id.TypeId.ToString().Replace("MyObjectBuilder_", "")).Append('/').Append(d.Id.SubtypeName).Append("=0\n");
+            }
+            catch { }
+            return sb.ToString().TrimEnd('\n');
+        }
+
+        void Specials(World w, MagazynCfg m)
+        {
+            for (int si = 0; si < w.Specials.Count; si++)
+            {
+                if (budget <= 0) return;
+                var sp = w.Specials[si];
+                var tb = sp.Inv.Block as Sandbox.ModAPI.IMyTerminalBlock;
+                if (!sp.HasHeader && sp.Rules.Count == 0 && tb != null)
+                {
+                    // nowy kontener specjalny: wpisz listę przedmiotów do CustomData (jak Isy)
+                    try { tb.CustomData = SpecialTemplate(tb.CustomData); Note(T("szablon CustomData: ", "CustomData template: ") + sp.Inv.Name); } catch { }
+                    continue;
+                }
+
+                // 1) wyrzuć to, czego ma nie być albo jest za dużo
+                foreach (var item in sp.Inv.I.GetItems().ToList())
+                {
+                    if (budget <= 0) return;
+                    var id = new MyDefinitionId(item.Content.TypeId, item.Content.SubtypeId);
+                    var r = sp.RuleFor(id);
+                    double have = (double)sp.Inv.I.GetItemAmount(id);
+                    double excess = r == null ? have : (r.Mode == 'N' || r.Mode == 'L') ? have - r.Amount : 0;
+                    if (excess <= (IsFractional(id) ? 0.01 : 0.5)) continue;
+                    var dst = (w.Targets(Ctx.CatOf(id.TypeId.ToString())) ?? w.Cargo).FirstOrDefault(x => x.Fill < 0.99);
+                    if (dst != null) Move(sp.Inv.I, item, dst.I, excess, T("nadmiar ze specjalnego", "special excess"));
+                }
+
+                // 2) dołóż brakujące
+                foreach (var r in sp.Rules)
+                {
+                    if (budget <= 0) return;
+                    if (r.Mode == 'L') continue;
+                    double have = (double)sp.Inv.I.GetItemAmount(r.Id);
+                    double need = r.Mode == 'A' ? 1e12 : r.Amount - have;
+                    if (need <= (IsFractional(r.Id) ? 0.01 : 0.5)) continue;
+                    var cat = Ctx.CatOf(r.Id.TypeId.ToString());
+                    var from = new List<Inv>();
+                    var typed = w.Targets(cat);
+                    if (typed != null) from.AddRange(typed);
+                    from.AddRange(w.Cargo.Where(x => !from.Contains(x)));
+                    from.AddRange(w.Sources.Where(x => x.Output && !from.Contains(x)));
+                    if (m.SpecialSteal) from.AddRange(w.Specials.Skip(si + 1).Where(o => o.Priority > sp.Priority).Select(o => o.Inv));
+                    Fill(from, sp.Inv.I, r.Id, need, T("specjalny", "special"));
+                }
+            }
+        }
+
         class World
         {
             public readonly Dictionary<ItemCat, List<Inv>> Typed = new Dictionary<ItemCat, List<Inv>>();
@@ -113,6 +240,7 @@ namespace DaneHud
             public readonly List<MyCubeBlock> Generators = new List<MyCubeBlock>();
             public readonly List<MyCubeBlock> Reactors = new List<MyCubeBlock>();
             public readonly List<MyCubeBlock> Assemblers = new List<MyCubeBlock>();
+            public readonly List<Special> Specials = new List<Special>();
             readonly string[] locked;
             readonly Dictionary<ItemCat, string> kw;
 
@@ -133,6 +261,14 @@ namespace DaneHud
                     if (IsLocked(name)) continue;
                     var inv0 = b.GetInventory(0) as MyInventory;
                     if (inv0 == null) continue;
+
+                    // kontener specjalny (jak u Isy): zawartość wg CustomData, sortowanie go nie opróżnia
+                    bool production = b is Ing.IMyProductionBlock || b is Ing.IMyReactor || b is Ing.IMyGasGenerator;
+                    if (!production && !string.IsNullOrEmpty(m.SpecialKw) && name.IndexOf(m.SpecialKw, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        Specials.Add(new Special(new Inv { Block = b, I = inv0, Name = name }));
+                        continue;
+                    }
 
                     if (b is Ing.IMyCargoContainer)
                     {
@@ -162,6 +298,7 @@ namespace DaneHud
                     else if (b is Ing.IMyGasGenerator && on && MakesGas(b)) Generators.Add(b);
                     else if (b is Ing.IMyReactor && on) Reactors.Add(b);
                 }
+                Specials.Sort((a, b2) => a.Priority.CompareTo(b2.Priority));
             }
 
             public bool IsLocked(string name)

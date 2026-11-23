@@ -1,11 +1,18 @@
 =====================================================================================================
-DaneHud v3 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
+DaneHud v4 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
 =====================================================================================================
 
 Okna z danymi grida, w którym siedzisz, rysowane na HUD (zamiast Automatic LCDs 2 + HudLcd), oraz
 MAGAZYN — części skryptu Isy wykonywane przez plugin, bez programowalnego bloku.
 
 Polecenia czatu: /dane (albo /data) — ustawienia; /dane ukryj | pokaz; /dane pl | en.
+
+Nowe w v4:
+  * Kontenery specjalne jak u Isy: "Special" w nazwie, zawartość w CustomData (przedmiot=100 trzyma 100
+    i oddaje nadmiar, 100M minimum, 100L tylko oddaje nadmiar, All bierze wszystko), priorytet [p1] [pmax] [pmin],
+    wyższy priorytet może brać z niższego. Nowy kontener dostaje szablon CustomData jak u Isy. Sortowanie ich
+    nie opróżnia. Rzeczy spoza listy są wynoszone do magazynu.
+  * Pomijanie wybranych kontenerów: słowa w polu "Pomijane bloki" (Locked, Hidden, [No Sorting], !manual...).
 
 Nowe w v3:
   * Styl tekstu okna: zwykły, pogrubiony, bardzo gruby, obrys, pogrubiony + obrys, cień
@@ -26,13 +33,19 @@ Nowe w v3:
   * Krótsze podpisy w oknach, poprawione zużycie H2 silników wodorowych (prąd).
 
 =====================================================================================================
-DaneHud v3 — Pulsar (Legacy) plugin for Space Engineers
+DaneHud v4 — Pulsar (Legacy) plugin for Space Engineers
 =====================================================================================================
 
 Windows with data of the grid you sit in, drawn on the HUD (instead of Automatic LCDs 2 + HudLcd), plus
 STORAGE — parts of Isy's script run by the plugin, without a programmable block.
 
 Chat: /data (or /dane) — settings; /data hide | show; /data pl | en.
+
+New in v4:
+  * Special containers like Isy: "Special" in the name, contents in CustomData (item=100 keeps 100 and removes excess,
+    100M minimum, 100L only removes excess, All takes everything), priority [p1] [pmax] [pmin]; higher priority may take
+    from lower. A new special container gets Isy's CustomData template. Sorting never drains them.
+  * Skipping chosen containers: keywords in "Skipped blocks" (Locked, Hidden, [No Sorting], !manual...).
 
 New in v3:
   * Window text style: normal, bold, extra bold, outline, bold + outline, drop shadow

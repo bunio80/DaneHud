@@ -355,6 +355,9 @@ namespace DaneHud
         public bool Ice = true;             // lód do generatorów H2/O2
         public bool Uranium = true;         // uran do reaktorów
         public bool Autocraft = false;      // autocrafting wg limitów
+        public bool Specials = true;        // kontenery specjalne (Special w nazwie, zawartość w CustomData jak u Isy)
+        public string SpecialKw = "Special";
+        public bool SpecialSteal = true;    // specjalny o wyższym priorytecie może brać z niższego
         public string OreKw = "Ores", IngotKw = "Ingots", ComponentKw = "Components", ToolKw = "Tools", AmmoKw = "Ammo", BottleKw = "Bottles";
         public string LockedKw = "Locked, Hidden, [No Sorting], [No IIM], !manual, Control Station, Control Seat, Safe Zone";
         public string OrePriority = "Stone, Platinum";   // te rudy najpierw (jak fixedRefiningList u Isy)
