@@ -315,10 +315,12 @@ namespace DaneHud
         }
 
         /// <summary>Przesuwa przedmiot o jedno miejsce wśród widocznych (dir -1 = w górę). Zapisuje pełną kolejność wszystkich przedmiotów.</summary>
-        void MoveItem(List<MyPhysicalItemDefinition> shown, int index, int dir)
+        void MoveItem(List<MyPhysicalItemDefinition> shown, int index, int dir) => MoveTo(shown, index, index + dir);
+
+        /// <summary>Przesuwa przedmiot na miejsce innego z widocznych (0 = na samą górę, Count-1 = na sam dół).</summary>
+        void MoveTo(List<MyPhysicalItemDefinition> shown, int index, int other)
         {
-            int other = index + dir;
-            if (other < 0 || other >= shown.Count) return;
+            if (other < 0 || other >= shown.Count || other == index) return;
             var m = g.Magazyn;
             int keep = cat; cat = Cats.Length - 1;              // pełna lista (Wszystko) w obecnej kolejności
             var all = Defs(false).Select(d => d.Id.ToString()).ToList();
@@ -327,7 +329,9 @@ namespace DaneHud
             string a = shown[index].Id.ToString(), b = shown[other].Id.ToString();
             int ia = all.IndexOf(a), ib = all.IndexOf(b);
             if (ia < 0 || ib < 0) return;
-            all[ia] = b; all[ib] = a;
+            all.RemoveAt(ia);
+            ib = all.IndexOf(b);
+            all.Insert(other < index ? ib : ib + 1, a);
             m.AutoOrder = all;
             Plugin.Dirty = true;
             scroll = panelRef?.ScrollbarVPosition ?? 0;
@@ -380,11 +384,11 @@ namespace DaneHud
             }, 0.2f);
             Check(-0.39f, -0.345f, T("Tylko z limitem", "Only with a limit"), onlySet, v => { onlySet = v; RecreateControls(false); });
             Label(-0.15f, -0.345f, string.IsNullOrEmpty(info)
-                ? T("Limit = ile ma być (puste = 0, tylko pokazuje). ^ v = kolejność na HUD.", "Limit = how many (empty = 0, display only). ^ v = HUD order.")
+                ? T("Limit = ile ma być (puste = 0). ^^ ^ v vv = kolejność na HUD.", "Limit = how many (empty = 0). ^^ ^ v vv = HUD order.")
                 : info, 0.62f);
 
             // kolumny (przesunięcia od lewej krawędzi wiersza)
-            const float oHave = 0.35f, oQueue = 0.435f, oLimit = 0.45f, oPrio = 0.57f, oHide = 0.62f, oUp = 0.672f, oDown = 0.706f;
+            const float oHave = 0.325f, oQueue = 0.405f, oLimit = 0.42f, oPrio = 0.523f, oHide = 0.568f, oTop = 0.61f, oUp = 0.643f, oDown = 0.676f, oBottom = 0.709f;
             const float hx = -0.375f, hy = -0.3f;
             Label(hx, hy, T("Przedmiot", "Item"), 0.64f);
             HeadRight(hx + oHave, hy, T("Jest", "Have"));
@@ -392,7 +396,7 @@ namespace DaneHud
             Label(hx + oLimit, hy, T("Limit", "Limit"), 0.64f);
             Label(hx + oPrio - 0.012f, hy, T("Prio.", "Prio."), 0.64f);
             Label(hx + oHide - 0.012f, hy, T("Ukryj", "Hide"), 0.64f);
-            Button(hx + oUp + 0.017f, hy, "A-Z", () =>
+            Button(hx + oUp + 0.031f, hy, "A-Z", () =>
             {
                 g.Magazyn.AutoOrder.Clear();
                 Plugin.Dirty = true;
@@ -419,14 +423,22 @@ namespace DaneHud
                 if (have != null && have.TryGetValue(key, out var h)) hv = h?.Amount ?? 0;
                 bool low = q != null && q.Amount > 0 && hv < q.Amount;
                 string name = NameOf(d);
-                if (name.Length > 30) name = name.Substring(0, 29) + "…";
+                if (name.Length > 28) name = name.Substring(0, 27) + "…";
                 int idx = i;
+                parent.Controls.Add(new MyGuiControlButton(position: new Vector2(x0 + oTop, yy), visualStyle: MyGuiControlButtonStyleEnum.Rectangular,
+                    size: new Vector2(0.03f, 0.03f), originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
+                    text: new System.Text.StringBuilder("^^"), textScale: 0.62f, onButtonClick: _ => MoveTo(defs, idx, 0),
+                    toolTip: T("Na samą górę listy HUD", "To the top of the HUD list")) { Enabled = i > 0 });
+                parent.Controls.Add(new MyGuiControlButton(position: new Vector2(x0 + oBottom, yy), visualStyle: MyGuiControlButtonStyleEnum.Rectangular,
+                    size: new Vector2(0.03f, 0.03f), originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
+                    text: new System.Text.StringBuilder("vv"), textScale: 0.62f, onButtonClick: _ => MoveTo(defs, idx, defs.Count - 1),
+                    toolTip: T("Na sam dół listy HUD", "To the bottom of the HUD list")) { Enabled = i < defs.Count - 1 });
                 parent.Controls.Add(new MyGuiControlButton(position: new Vector2(x0 + oUp, yy), visualStyle: MyGuiControlButtonStyleEnum.Rectangular,
-                    size: new Vector2(0.028f, 0.03f), originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
+                    size: new Vector2(0.03f, 0.03f), originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
                     text: new System.Text.StringBuilder("^"), textScale: 0.7f, onButtonClick: _ => MoveItem(defs, idx, -1),
                     toolTip: T("W górę na liście HUD", "Up on the HUD list")) { Enabled = i > 0 });
                 parent.Controls.Add(new MyGuiControlButton(position: new Vector2(x0 + oDown, yy), visualStyle: MyGuiControlButtonStyleEnum.Rectangular,
-                    size: new Vector2(0.028f, 0.03f), originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
+                    size: new Vector2(0.03f, 0.03f), originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
                     text: new System.Text.StringBuilder("v"), textScale: 0.7f, onButtonClick: _ => MoveItem(defs, idx, 1),
                     toolTip: T("W dół na liście HUD", "Down on the HUD list")) { Enabled = i < defs.Count - 1 });
                 parent.Controls.Add(new MyGuiControlLabel
@@ -452,7 +464,7 @@ namespace DaneHud
                 {
                     OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
                 };
-                tb.Size = new Vector2(0.1f, tb.Size.Y);
+                tb.Size = new Vector2(0.09f, tb.Size.Y);
                 tb.TextChanged += t =>
                 {
                     double.TryParse((t.Text ?? "").Replace(',', '.').Trim(), NumberStyles.Float, inv, out var v);
