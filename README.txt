@@ -1,11 +1,19 @@
 =====================================================================================================
-DaneHud v5 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
+DaneHud v6 (2026-11-23) — plugin Pulsara (Legacy) do Space Engineers            [English below]
 =====================================================================================================
 
 Okna z danymi grida, w którym siedzisz, rysowane na HUD (zamiast Automatic LCDs 2 + HudLcd), oraz
 MAGAZYN — części skryptu Isy wykonywane przez plugin, bez programowalnego bloku.
 
 Polecenia czatu: /data — ustawienia; /data ukryj | pokaz; /data pl | en  (stare /dane nadal działa).
+
+Nowe w v6:
+  * Rafinerie 24/7: lekki skrypt PB (Rafinerie_PB.cs.txt, ok. 6 tys. znaków) — każda ruda po równo we wszystkich
+    rafineriach i wynoszenie sztabek z wyjść. Działa na serwerze także bez Ciebie (Nexus, offline).
+    /data » Magazyn » „Wgraj / zaktualizuj skrypt” wgrywa go do PB z „Rafinerie” w nazwie (albo do pustego PB)
+    i wpisuje mu ustawienia (kolejność rud, słowa kontenerów, pomijane bloki) do CustomData.
+    Gdy skrypt działa, plugin nie robi rafinerii podwójnie — tylko aktualizuje jego ustawienia.
+    Montażownie i tak pracują z kolejki, generatory i reaktory same pobierają lód i uran.
 
 Nowe w v5:
   * Komenda /data (zamiast /dane).
@@ -43,13 +51,20 @@ Nowe w v3:
   * Krótsze podpisy w oknach, poprawione zużycie H2 silników wodorowych (prąd).
 
 =====================================================================================================
-DaneHud v5 — Pulsar (Legacy) plugin for Space Engineers
+DaneHud v6 — Pulsar (Legacy) plugin for Space Engineers
 =====================================================================================================
 
 Windows with data of the grid you sit in, drawn on the HUD (instead of Automatic LCDs 2 + HudLcd), plus
 STORAGE — parts of Isy's script run by the plugin, without a programmable block.
 
 Chat: /data — settings; /data hide | show; /data pl | en.
+
+New in v6:
+  * Refineries 24/7: a light PB script (Rafinerie_PB.cs.txt, ~6k characters) — every ore split equally and ingots
+    moved out of the outputs. Runs on the server without you (Nexus, offline).
+    /data » Storage » "Install / update script" puts it into a PB named "Refineries"/"Rafinerie" (or an empty PB)
+    and writes its settings (ore order, container keywords, skipped blocks) to CustomData.
+    While the script runs, the plugin does not do refineries twice — it only updates the script's settings.
 
 New in v5:
   * /data command (instead of /dane).

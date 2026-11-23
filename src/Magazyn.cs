@@ -58,7 +58,14 @@ namespace DaneHud
             }
             State = T("działa", "running");
             var w = new World(c, m);
-            if (m.Refineries) Refineries(w, m);
+            var script = RefineryScript(c);
+            ScriptName = script != null ? Ctx.NameOf((MyCubeBlock)script) : "";
+            if (script != null)
+            {
+                // rafinerie obsługuje skrypt PB 24/7 — plugin tylko podaje mu ustawienia
+                if (cycle % 20 == 7) WriteScriptConfig(script, m);
+            }
+            else if (m.Refineries) Refineries(w, m);
             if (m.Ice && cycle % 6 == 1) Ice(w, m);
             if (m.Uranium && cycle % 6 == 3) Uranium(w, m);
             if (m.Specials && cycle % 4 == 2) Specials(w, m);
@@ -80,6 +87,58 @@ namespace DaneHud
             State = "";
         }
 
+        // ------------------------------------------------------------------ skrypt PB rafinerii (24/7 na serwerze)
+
+        internal const string ScriptTag = "[DaneHud-Rafinerie]";
+        public string ScriptName = "";
+
+        /// <summary>Działający PB z naszym skryptem rafinerii (znacznik w CustomData).</summary>
+        internal static Ing.IMyProgrammableBlock RefineryScript(Ctx c)
+        {
+            if (c == null) return null;
+            foreach (var b in c.Blocks)
+                if (b is Ing.IMyProgrammableBlock pb && b.IsFunctional && pb.Enabled && (pb.CustomData ?? "").Contains(ScriptTag)) return pb;
+            return null;
+        }
+
+        internal static string ScriptConfig(MagazynCfg m) =>
+            ScriptTag + "\npriority=" + (m.OrePriority ?? "") + "\nores=" + (m.OreKw ?? "") + "\ningots=" + (m.IngotKw ?? "") +
+            "\nskip=" + (m.LockedKw ?? "") + "\n";
+
+        static void WriteScriptConfig(Ing.IMyProgrammableBlock pb, MagazynCfg m)
+        {
+            string cfg = ScriptConfig(m);
+            if ((pb.CustomData ?? "").Replace("\r", "") == cfg) return;
+            try { pb.CustomData = cfg; } catch { }
+        }
+
+        internal static string ScriptText() => RafinerieScript.Text;
+
+        /// <summary>
+        /// Wgrywa skrypt rafinerii do PB: najpierw PB, który już go ma, potem PB z „Rafinerie”/„Refiner” w nazwie,
+        /// potem pusty PB. Nigdy nie nadpisuje innego skryptu (np. Isy).
+        /// </summary>
+        internal static string InstallScript(Ctx c, MagazynCfg m)
+        {
+            if (c == null) return T("Usiądź w gridzie bazy.", "Sit in the base grid.");
+            var pbs = c.Blocks.OfType<Sandbox.ModAPI.IMyProgrammableBlock>().Where(p => ((MyCubeBlock)p).IsFunctional).ToList();
+            var pb = pbs.FirstOrDefault(p => (p.CustomData ?? "").Contains(ScriptTag))
+                  ?? pbs.FirstOrDefault(p => (p.CustomName ?? "").IndexOf("Rafinerie", StringComparison.OrdinalIgnoreCase) >= 0
+                                          || (p.CustomName ?? "").IndexOf("Refiner", StringComparison.OrdinalIgnoreCase) >= 0)
+                  ?? pbs.FirstOrDefault(p => string.IsNullOrWhiteSpace(p.ProgramData));
+            if (pb == null) return T("Brak wolnego PB. Postaw PB albo nazwij go „PB Rafinerie”.", "No free PB. Build one or name it \"PB Refineries\".");
+            string text = ScriptText();
+            if (string.IsNullOrEmpty(text)) return T("Błąd: brak skryptu w pluginie.", "Error: script missing in plugin.");
+            try
+            {
+                pb.CustomData = ScriptConfig(m);
+                pb.ProgramData = text;
+                pb.Enabled = true;
+                return T("Skrypt wgrany do: ", "Script installed in: ") + pb.CustomName;
+            }
+            catch (Exception e) { Plugin.Log("install script: " + e); return T("Nie udało się: ", "Failed: ") + e.Message; }
+        }
+
         static void Prune(Dictionary<string, DateTime> d)
         {
             var now = DateTime.UtcNow;
@@ -92,6 +151,7 @@ namespace DaneHud
                 if (b is Ing.IMyProgrammableBlock pb && pb.Enabled && b.IsWorking)
                 {
                     var n = pb.CustomName ?? "";
+                    if ((pb.CustomData ?? "").Contains(ScriptTag)) continue;   // nasz skrypt rafinerii to nie Isy
                     if (n.IndexOf("Isy", StringComparison.OrdinalIgnoreCase) >= 0 || n.IndexOf("IIM", StringComparison.Ordinal) >= 0) return true;
                 }
             return false;

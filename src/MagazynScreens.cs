@@ -28,6 +28,7 @@ namespace DaneHud
         }
 
         public override string GetFriendlyName() => "DaneHudMagazyn";
+        string installMsg = "";
 
         public override void RecreateControls(bool constructor)
         {
@@ -63,6 +64,24 @@ namespace DaneHud
             Label(x + 0.035f, y, T("Kolejność rud:", "Ore order:"), 0.7f);
             string order = string.IsNullOrWhiteSpace(m.OrePriority) ? T("(brak — po równo wg ilości)", "(none — by amount)") : m.OrePriority;
             Button(x + 0.4f, y, order + "  ...", () => MyGuiSandbox.AddScreen(new OrePriorityScreen(m, () => RecreateControls(false))), 0.42f); y += row;
+
+            // --- skrypt rafinerii 24/7
+            Ctx here0 = null;
+            if (Plugin.ActiveProfile == g) try { here0 = Ctx.Collect(); } catch { }
+            var spb = Magazyn.RefineryScript(here0);
+            Label(x + 0.035f, y, T("Rafinerie 24/7 (skrypt PB): ", "Refineries 24/7 (PB script): ") +
+                (here0 == null ? T("usiądź w bazie", "sit in the base") : spb != null ? T("działa w ", "running in ") + ((Sandbox.ModAPI.Ingame.IMyTerminalBlock)spb).CustomName : T("brak", "none")), 0.66f);
+            Button(0.25f, y, T("Wgraj / zaktualizuj skrypt", "Install / update script"), () =>
+            {
+                Ctx cc = null;
+                try { cc = Ctx.Collect(); } catch { }
+                installMsg = Magazyn.InstallScript(cc, M);
+                RecreateControls(false);
+            }, 0.3f); y += row * 0.8f;
+            Label(x + 0.035f, y, string.IsNullOrEmpty(installMsg)
+                ? T("Pracuje na serwerze także bez Ciebie (Nexus, offline). Wgrywa do PB z „Rafinerie” w nazwie albo do pustego PB.",
+                    "Runs on the server without you too (Nexus, offline). Installs into a PB named \"Refineries\" or an empty PB.")
+                : installMsg, 0.62f); y += row;
 
             // --- lód, uran
             Check(x, y, T("Lód do generatorów H2/O2, wypełnienie %:", "Ice into H2/O2 generators, fill %:"), m.Ice, v => m.Ice = v);

@@ -1,0 +1,122 @@
+// DaneHud Rafinerie v1 — skrypt PB: każda ruda po równo we wszystkich rafineriach, 24/7 (działa na serwerze).
+// Ustawienia w CustomData tego PB — wpisuje je plugin DaneHud (/data » Magazyn), można też ręcznie:
+//   priority=Stone, Platinum      (te rudy najpierw)
+//   ores=Ores                      (słowo w nazwie kontenerów z rudą)
+//   ingots=Ingots                  (słowo w nazwie kontenerów na sztabki)
+//   skip=!manual, Locked           (pomijane bloki)
+// Rafinerie nie pobierają rudy same (konwejer wyłączony) — skrypt dzieli rudę i wynosi sztabki z wyjścia.
+
+const string Tag = "[DaneHud-Rafinerie]";
+string oreKw = "Ores", ingotKw = "Ingots";
+List<string> prio = new List<string>(), skip = new List<string> { "!manual", "Locked" };
+List<IMyRefinery> refs = new List<IMyRefinery>();
+List<IMyTerminalBlock> cargo = new List<IMyTerminalBlock>(), ores = new List<IMyTerminalBlock>(), ingots = new List<IMyTerminalBlock>();
+List<MyInventoryItem> items = new List<MyInventoryItem>();
+int run, moves, budget;
+string info = "";
+
+public Program() { Runtime.UpdateFrequency = UpdateFrequency.Update100; }
+
+List<string> Split(string v)
+{
+    var l = new List<string>();
+    foreach (var s in v.Split(',')) if (s.Trim().Length > 0) l.Add(s.Trim());
+    return l;
+}
+
+bool Skip(IMyTerminalBlock b)
+{
+    foreach (var k in skip) if (b.CustomName.Contains(k)) return true;
+    return !b.IsFunctional || !b.IsSameConstructAs(Me);
+}
+
+void Scan()
+{
+    foreach (var raw in Me.CustomData.Split('\n'))
+    {
+        var l = raw.Trim(); int e = l.IndexOf('=');
+        if (e < 0) continue;
+        string k = l.Substring(0, e).Trim().ToLower(), v = l.Substring(e + 1).Trim();
+        if (k == "priority") prio = Split(v);
+        else if (k == "ores") oreKw = v;
+        else if (k == "ingots") ingotKw = v;
+        else if (k == "skip") skip = Split(v);
+    }
+    GridTerminalSystem.GetBlocksOfType(refs, r => !Skip(r) && r.Enabled);
+    GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(cargo, c => !Skip(c));
+    ores.Clear(); ingots.Clear();
+    foreach (var c in cargo)
+    {
+        if (oreKw.Length > 0 && c.CustomName.Contains(oreKw)) ores.Add(c);
+        if (ingotKw.Length > 0 && c.CustomName.Contains(ingotKw)) ingots.Add(c);
+    }
+    if (ores.Count == 0) ores.AddRange(cargo);
+    if (ingots.Count == 0) ingots.AddRange(cargo);
+}
+
+bool Move(IMyInventory src, MyInventoryItem it, IMyInventory dst, double amount)
+{
+    if (budget <= 0 || amount <= 0) return false;
+    if (!src.CanTransferItemTo(dst, it.Type)) return false;
+    var a = (MyFixedPoint)Math.Min(amount, (double)it.Amount);
+    if (src.TransferItemTo(dst, it, a)) { budget--; moves++; return true; }
+    return false;
+}
+
+double Fill(IMyInventory i) => (double)i.MaxVolume > 0 ? (double)i.CurrentVolume / (double)i.MaxVolume : 1;
+
+public void Main(string arg, UpdateType src)
+{
+    if (!Me.CustomData.Contains(Tag)) Me.CustomData = Tag + "\npriority=Stone, Platinum\nores=Ores\ningots=Ingots\nskip=!manual, Locked\n" + Me.CustomData;
+    if (run++ % 10 == 0) Scan();
+    budget = 8;
+    foreach (var r in refs) if (r.UseConveyorSystem) r.UseConveyorSystem = false;
+
+    // 1) sztabki z wyjść rafinerii do magazynu (bez konwejera gra ich nie wypycha)
+    foreach (var r in refs)
+    {
+        var o = r.GetInventory(1);
+        if (Fill(o) < 0.3 && run % 3 != 0) continue;
+        items.Clear(); o.GetItems(items);
+        foreach (var it in items)
+            foreach (var c in ingots)
+                if (Fill(c.GetInventory(0)) < 0.99 && Move(o, it, c.GetInventory(0), (double)it.Amount)) break;
+    }
+
+    // 2) każda ruda po równo
+    if (run % 2 == 0 && refs.Count > 0)
+    {
+        var total = new Dictionary<MyItemType, double>();
+        foreach (var c in ores) { items.Clear(); c.GetInventory(0).GetItems(items); foreach (var it in items) if (it.Type.TypeId == "MyObjectBuilder_Ore") { double t; total.TryGetValue(it.Type, out t); total[it.Type] = t + (double)it.Amount; } }
+        foreach (var r in refs) { items.Clear(); r.GetInventory(0).GetItems(items); foreach (var it in items) { double t; total.TryGetValue(it.Type, out t); total[it.Type] = t + (double)it.Amount; } }
+        var order = total.Keys.OrderBy(t => { int i = prio.IndexOf(t.SubtypeId); return i < 0 ? 999 : i; }).ThenByDescending(t => total[t]).ToList();
+        foreach (var ore in order)
+        {
+            var able = refs.Where(r => r.GetInventory(0).CanItemsBeAdded(1, ore) || (double)r.GetInventory(0).GetItemAmount(ore) > 0).ToList();
+            if (able.Count == 0) continue;
+            double target = total[ore] / able.Count;
+            foreach (var r in able)
+            {
+                var inv = r.GetInventory(0);
+                double have = (double)inv.GetItemAmount(ore);
+                if (have > target * 1.25 && have - target > 500)
+                {
+                    var it = inv.FindItem(ore);
+                    if (it.HasValue) foreach (var c in ores) if (Fill(c.GetInventory(0)) < 0.99 && Move(inv, it.Value, c.GetInventory(0), have - target)) break;
+                }
+                else if (target - have > Math.Max(50, target * 0.15) && Fill(inv) < 0.9)
+                {
+                    double need = target - have;
+                    foreach (var c in ores)
+                    {
+                        var ci = c.GetInventory(0);
+                        var it = ci.FindItem(ore);
+                        if (it.HasValue && Move(ci, it.Value, inv, need)) break;
+                    }
+                }
+            }
+        }
+    }
+    info = "DaneHud Rafinerie v1\nRafinerie: " + refs.Count + "\nKontenery rud: " + ores.Count + ", sztabek: " + ingots.Count + "\nPrzeniesienia: " + moves;
+    Echo(info);
+}
