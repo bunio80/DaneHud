@@ -487,10 +487,15 @@ namespace DaneHud
                     var id = new MyDefinitionId(item.Content.TypeId, item.Content.SubtypeId);
                     var cat = Ctx.CatOf(id.TypeId.ToString());
                     var targets = w.Targets(cat);
-                    if (targets == null || w.IsTyped(src, cat)) continue;
+                    // wyjście produkcji opróżniamy zawsze: bez kontenera danego typu — do zwykłych kontenerów (najpierw bez słowa typu)
+                    if (targets == null && src.Output)
+                        targets = w.Cargo.Where(x => !w.Typed.Values.Any(l => l.Contains(x))).Concat(w.Cargo).Distinct().ToList();
+                    if (targets == null || targets.Count == 0 || w.IsTyped(src, cat)) continue;
                     if (src.Keep != null && src.Keep(id)) continue;
-                    // z wyjść produkcji co kilka sekund większymi porcjami, nie po 0,4 kg co pół sekundy
-                    if (src.Output && src.Fill < 0.5 && (double)item.Amount < (IsFractional(id) ? 100 : 20)) continue;
+                    // z wyjść produkcji co kilka sekund większymi porcjami, nie po 0,4 kg co pół sekundy —
+                    // tylko komponenty i sztabki (robione masowo); butle, narzędzia, amunicja wychodzą od razu
+                    if (src.Output && src.Fill < 0.5 && (cat == ItemCat.Component || cat == ItemCat.Ingot)
+                        && (double)item.Amount < (IsFractional(id) ? 100 : 20)) continue;
                     foreach (var dst in targets)
                     {
                         if (dst.Fill > 0.995) continue;

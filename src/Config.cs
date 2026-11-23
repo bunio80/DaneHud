@@ -368,6 +368,15 @@ namespace DaneHud
         public double UraniumLarge = 200, UraniumSmall = 50;
         public int MovesPerSecond = 8;     // ile przeniesień na sekundę (mniej = mniejszy ruch w sieci)
         public List<Quota> Quotas = new List<Quota>();
+        public List<string> AutoOrder = new List<string>();   // własna kolejność autocraftingu (puste = alfabetycznie)
+
+        /// <summary>Miejsce przedmiotu na liście autocraftingu (bez własnej kolejności = za ustawionymi).</summary>
+        public Dictionary<string, int> OrderMap()
+        {
+            var d = new Dictionary<string, int>();
+            for (int i = 0; i < AutoOrder.Count; i++) if (!d.ContainsKey(AutoOrder[i])) d[AutoOrder[i]] = i;
+            return d;
+        }
     }
 
     public class Config
@@ -420,6 +429,7 @@ namespace DaneHud
                 if (g.GridName == null) g.GridName = "";
                 if (g.Magazyn == null) g.Magazyn = new MagazynCfg();
                 if (g.Magazyn.Quotas == null) g.Magazyn.Quotas = new List<Quota>();
+                if (g.Magazyn.AutoOrder == null) g.Magazyn.AutoOrder = new List<string>();
                 FixWindows(g.Windows);
                 g.Magazyn.Quotas.RemoveAll(q => q == null || string.IsNullOrEmpty(q.Id));
                 // v8: gdy autocrafting robi plugin, okno Autocrafting czyta jego limity, a nie stary LCD Isy

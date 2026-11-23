@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -309,8 +309,33 @@ namespace DaneHud
                 }
             }
             catch { }
-            return list.OrderBy(NameOf, StringComparer.CurrentCultureIgnoreCase).ToList();
+            var order = m.OrderMap();
+            return list.OrderBy(d => order.TryGetValue(d.Id.ToString(), out var r) ? r : int.MaxValue)
+                       .ThenBy(NameOf, StringComparer.CurrentCultureIgnoreCase).ToList();
         }
+
+        /// <summary>Przesuwa przedmiot o jedno miejsce wśród widocznych (dir -1 = w górę). Zapisuje pełną kolejność wszystkich przedmiotów.</summary>
+        void MoveItem(List<MyPhysicalItemDefinition> shown, int index, int dir)
+        {
+            int other = index + dir;
+            if (other < 0 || other >= shown.Count) return;
+            var m = g.Magazyn;
+            int keep = cat; cat = Cats.Length - 1;              // pełna lista (Wszystko) w obecnej kolejności
+            var all = Defs(false).Select(d => d.Id.ToString()).ToList();
+            cat = keep;
+            foreach (var k in m.AutoOrder) if (!all.Contains(k)) all.Add(k);   // przedmioty spoza obecnych definicji zostają
+            string a = shown[index].Id.ToString(), b = shown[other].Id.ToString();
+            int ia = all.IndexOf(a), ib = all.IndexOf(b);
+            if (ia < 0 || ib < 0) return;
+            all[ia] = b; all[ib] = a;
+            m.AutoOrder = all;
+            Plugin.Dirty = true;
+            scroll = panelRef?.ScrollbarVPosition ?? 0;
+            RecreateControls(false);
+        }
+
+        float scroll;
+        MyGuiControlScrollablePanel panelRef;
 
         /// <summary>Wpis limitu (tworzy go, gdy trzeba); pusty wpis bez flag znika.</summary>
         Quota Get(string key, bool create)
@@ -355,11 +380,11 @@ namespace DaneHud
             }, 0.2f);
             Check(-0.39f, -0.345f, T("Tylko z limitem", "Only with a limit"), onlySet, v => { onlySet = v; RecreateControls(false); });
             Label(-0.15f, -0.345f, string.IsNullOrEmpty(info)
-                ? T("Limit = ile sztuk ma być w gridzie (puste = bez limitu).", "Limit = how many should be in the grid (empty = none).")
+                ? T("Limit = ile ma być (puste = 0, tylko pokazuje). ^ v = kolejność na HUD.", "Limit = how many (empty = 0, display only). ^ v = HUD order.")
                 : info, 0.62f);
 
             // kolumny (przesunięcia od lewej krawędzi wiersza)
-            const float oHave = 0.40f, oQueue = 0.49f, oLimit = 0.505f, oPrio = 0.635f, oHide = 0.69f;
+            const float oHave = 0.35f, oQueue = 0.435f, oLimit = 0.45f, oPrio = 0.57f, oHide = 0.62f, oUp = 0.672f, oDown = 0.706f;
             const float hx = -0.375f, hy = -0.3f;
             Label(hx, hy, T("Przedmiot", "Item"), 0.64f);
             HeadRight(hx + oHave, hy, T("Jest", "Have"));
@@ -367,6 +392,13 @@ namespace DaneHud
             Label(hx + oLimit, hy, T("Limit", "Limit"), 0.64f);
             Label(hx + oPrio - 0.012f, hy, T("Prio.", "Prio."), 0.64f);
             Label(hx + oHide - 0.012f, hy, T("Ukryj", "Hide"), 0.64f);
+            Button(hx + oUp + 0.017f, hy, "A-Z", () =>
+            {
+                g.Magazyn.AutoOrder.Clear();
+                Plugin.Dirty = true;
+                info = T("Kolejność: alfabetycznie.", "Order: alphabetical.");
+                RecreateControls(false);
+            }, 0.06f, 0.032f);
 
             var defs = Defs(onlySet);
             const float width = 0.78f, itemRow = 0.038f;
@@ -387,7 +419,16 @@ namespace DaneHud
                 if (have != null && have.TryGetValue(key, out var h)) hv = h?.Amount ?? 0;
                 bool low = q != null && q.Amount > 0 && hv < q.Amount;
                 string name = NameOf(d);
-                if (name.Length > 34) name = name.Substring(0, 33) + "…";
+                if (name.Length > 30) name = name.Substring(0, 29) + "…";
+                int idx = i;
+                parent.Controls.Add(new MyGuiControlButton(position: new Vector2(x0 + oUp, yy), visualStyle: MyGuiControlButtonStyleEnum.Rectangular,
+                    size: new Vector2(0.028f, 0.03f), originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
+                    text: new System.Text.StringBuilder("^"), textScale: 0.7f, onButtonClick: _ => MoveItem(defs, idx, -1),
+                    toolTip: T("W górę na liście HUD", "Up on the HUD list")) { Enabled = i > 0 });
+                parent.Controls.Add(new MyGuiControlButton(position: new Vector2(x0 + oDown, yy), visualStyle: MyGuiControlButtonStyleEnum.Rectangular,
+                    size: new Vector2(0.028f, 0.03f), originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_CENTER,
+                    text: new System.Text.StringBuilder("v"), textScale: 0.7f, onButtonClick: _ => MoveItem(defs, idx, 1),
+                    toolTip: T("W dół na liście HUD", "Down on the HUD list")) { Enabled = i < defs.Count - 1 });
                 parent.Controls.Add(new MyGuiControlLabel
                 {
                     Position = new Vector2(x0, yy), Text = name, TextScale = 0.62f,
@@ -445,6 +486,8 @@ namespace DaneHud
                 ScrolledAreaPadding = new MyGuiBorderThickness(0.005f),
             };
             Controls.Add(panel);
+            panelRef = panel;
+            if (scroll > 0) { try { panel.ScrollbarVPosition = scroll; } catch { } scroll = 0; }
             Button(0f, 0.43f, "OK", () => CloseScreen(false), 0.18f, 0.048f);
         }
 

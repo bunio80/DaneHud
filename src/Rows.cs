@@ -479,23 +479,37 @@ namespace DaneHud
         static List<AutoEntry> PluginAuto(Ctx c)
         {
             var m = Plugin.ActiveProfile?.Magazyn;
-            if (m == null || m.Quotas == null || m.Quotas.Count == 0) return null;
+            if (m == null || m.Quotas == null) return null;
             var items = c.Items(false);
-            var res = new List<AutoEntry>();
-            foreach (var q in m.Quotas.Where(x => x.Amount > 0 && !x.Hide))
+            // jak u Isy: wszystko, co da się zrobić w montażowni i jest w gridzie, + wszystko z limitem; bez limitu = 0
+            var keys = new HashSet<string>(m.Quotas.Where(x => x.Amount > 0).Select(x => x.Id));
+            foreach (var kv in items)
             {
-                if (!VRage.Game.MyDefinitionId.TryParse(q.Id, out var id)) continue;
-                items.TryGetValue(q.Id, out var have);
-                double cur = have?.Amount ?? 0;
-                Magazyn.I.QueuedNow.TryGetValue(q.Id, out var queued);
-                res.Add(new AutoEntry
-                {
-                    Name = Ctx.ItemName(id), Current = Math.Floor(cur), Wanted = q.Amount,
-                    Op = cur > q.Amount ? ">" : cur < q.Amount ? "<" : "=",
-                    Extra = queued > 0 ? "+" + Fmt.Amount(queued) : "",
-                });
+                var it = kv.Value;
+                if (it == null || it.Amount <= 0 || it.Cat == ItemCat.Ore || it.Cat == ItemCat.Ingot) continue;
+                if (!VRage.Game.MyDefinitionId.TryParse(kv.Key, out var iid) || Magazyn.BlueprintFor(iid) == null) continue;
+                keys.Add(kv.Key);
             }
-            return res.OrderBy(a => a.Name).ToList();
+            var hidden = new HashSet<string>(m.Quotas.Where(x => x.Hide).Select(x => x.Id));
+            var order = m.OrderMap();
+            var res = new List<(int rank, AutoEntry e)>();
+            foreach (var key in keys)
+            {
+                if (hidden.Contains(key) || !VRage.Game.MyDefinitionId.TryParse(key, out var id)) continue;
+                var q = m.Quotas.FirstOrDefault(x => x.Id == key);
+                double wanted = q?.Amount ?? 0;
+                items.TryGetValue(key, out var have);
+                double cur = Math.Floor(have?.Amount ?? 0);
+                Magazyn.I.QueuedNow.TryGetValue(key, out var queued);
+                res.Add((order.TryGetValue(key, out var r) ? r : int.MaxValue, new AutoEntry
+                {
+                    Name = Ctx.ItemName(id), Current = cur, Wanted = wanted,
+                    Op = cur > wanted ? ">" : cur < wanted ? "<" : "=",
+                    Extra = queued > 0 ? "+" + Fmt.Amount(queued) : "",
+                }));
+            }
+            if (res.Count == 0) return null;
+            return res.OrderBy(x => x.rank).ThenBy(x => x.e.Name, StringComparer.CurrentCultureIgnoreCase).Select(x => x.e).ToList();
         }
 
         void MagazynState(ElementCfg e)
@@ -519,7 +533,7 @@ namespace DaneHud
             if (e.FromPlugin)
             {
                 var own = PluginAuto(c);
-                if (own == null) { Text(T("Brak limitów w Magazynie (/data » Magazyn)", "No limits in Storage (/data » Storage)"), warn); return; }
+                if (own == null) { Text(T("Brak przedmiotów do pokazania (/data » Magazyn)", "Nothing to show (/data » Storage)"), warn); return; }
                 if (Plugin.ActiveProfile?.Magazyn?.Autocraft != true) Text(T("Autocrafting w Magazynie wyłączony", "Autocrafting in Storage is off"), warn);
                 AutoRows(e, own);
                 return;
