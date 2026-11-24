@@ -34,6 +34,7 @@ namespace DaneHud
         readonly Dictionary<string, DateTime> cooldown = new Dictionary<string, DateTime>();
         readonly Dictionary<string, DateTime> queueCooldown = new Dictionary<string, DateTime>();
         readonly HashSet<long> conveyorOff = new HashSet<long>();      // rafinerie, którym wyłączyliśmy pobieranie z konwejera
+        readonly HashSet<long> reactorOff = new HashSet<long>();       // reaktory, którym wyłączyliśmy pobieranie z konwejera
 
         static string T(string pl, string en) => L.T(pl, en);
 
@@ -64,10 +65,25 @@ namespace DaneHud
             {
                 // rafinerie obsługuje skrypt PB 24/7 — plugin tylko podaje mu ustawienia
                 if (cycle % 20 == 7) WriteScriptConfig(script, m);
+                if (!scriptChecked && script is Sandbox.ModAPI.IMyProgrammableBlock spb)
+                {
+                    scriptChecked = true;
+                    try
+                    {
+                        if ((spb.ProgramData ?? "").Replace("\r", "") != ScriptText().Replace("\r", ""))
+                        {
+                            spb.ProgramData = ScriptText();
+                            Note(T("skrypt PB zaktualizowany: ", "PB script updated: ") + ScriptName);
+                        }
+                    }
+                    catch (Exception e) { Plugin.LogOnce("script update", e); }
+                }
             }
             else if (m.Refineries) Refineries(w, m);
             if (m.Ice && cycle % 6 == 1) Ice(w, m);
-            if (m.Uranium && cycle % 6 == 3) Uranium(w, m);
+            if (m.Uranium && cycle % 6 == 3) Uranium(w, m, script != null);
+            if (m.AmmoWeapons && cycle % 6 == 5) Ammo(w, m);
+            if (cycle % 10 == 9) FillLevel(w, m);
             if (m.Specials && cycle % 4 == 2) Specials(w, m);
             if (m.Sort) Sort(w);
             if (cycle % 6 == 4) Learn(w, m);
@@ -79,6 +95,10 @@ namespace DaneHud
         /// <summary>Wstałeś z fotela albo wyłączyłeś magazyn: rafinerie znowu same pobierają rudę (działa też, gdy nie grasz).</summary>
         public void Release()
         {
+            foreach (var id in reactorOff)
+                if (MyEntities.TryGetEntityById(id, out var e) && e is Ing.IMyReactor r && !e.Closed && !r.UseConveyorSystem)
+                    try { r.UseConveyorSystem = true; } catch { }
+            reactorOff.Clear();
             if (conveyorOff.Count == 0) return;
             foreach (var id in conveyorOff)
                 if (MyEntities.TryGetEntityById(id, out var e) && e is Ing.IMyRefinery r && !e.Closed && !r.UseConveyorSystem)
@@ -91,6 +111,7 @@ namespace DaneHud
 
         internal const string ScriptTag = "[DaneHud-Rafinerie]";
         public string ScriptName = "";
+        bool scriptChecked;
         public string PrimaryOre = "";
 
         /// <summary>Działający PB z naszym skryptem rafinerii (znacznik w CustomData).</summary>
@@ -104,7 +125,10 @@ namespace DaneHud
 
         internal static string ScriptConfig(MagazynCfg m) =>
             ScriptTag + "\npriority=" + (m.OrePriority ?? "") + "\nores=" + (m.OreKw ?? "") + "\ningots=" + (m.IngotKw ?? "") +
-            "\nskip=" + (m.LockedKw ?? "") + "\n";
+            "\nskip=" + (m.LockedKw ?? "") +
+            "\nuranium=" + (m.Uranium ? "true" : "false") +
+            "\nularge=" + m.UraniumLarge.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+            "\nusmall=" + m.UraniumSmall.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\n";
 
         static void WriteScriptConfig(Ing.IMyProgrammableBlock pb, MagazynCfg m)
         {
@@ -226,27 +250,89 @@ namespace DaneHud
             public Rule RuleFor(MyDefinitionId id) => Rules.FirstOrDefault(r => r.Id == id);
         }
 
-        /// <summary>Szablon CustomData jak u Isy: lista przedmiotów z =0 do uzupełnienia.</summary>
-        static string SpecialTemplate(string existing)
+        static List<MyDefinitionId> specialItems;
+
+        /// <summary>Wszystkie przedmioty do listy kontenera specjalnego (kolejność jak u Isy: komponenty, rudy, sztabki, amunicja, butle, narzędzia).</summary>
+        static List<MyDefinitionId> SpecialItems()
         {
-            var sb = new System.Text.StringBuilder();
-            existing = (existing ?? "").TrimEnd();
-            if (existing.Length > 0) sb.Append(existing).Append("\n\n");
-            sb.Append("@").Append(SpecialHeader).Append("\n\n");
-            sb.Append("- Normal: stores wanted amount, removes excess. Usage: item=100\n");
-            sb.Append("- Minimum: stores wanted amount, ignores excess. Usage: item=100M\n");
-            sb.Append("- Limiter: doesn't store items, only removes excess. Usage: item=100L\n");
-            sb.Append("- All: stores all items it can get until it's full. Usage: item=All\n\n");
-            var cats = new[] { ItemCat.Component, ItemCat.Ingot, ItemCat.Ore, ItemCat.Ammo, ItemCat.Tool, ItemCat.Bottle };
+            if (specialItems != null) return specialItems;
+            var list = new List<MyDefinitionId>();
+            var cats = new[] { ItemCat.Component, ItemCat.Ore, ItemCat.Ingot, ItemCat.Ammo, ItemCat.Bottle, ItemCat.Tool };
             try
             {
+                var defs = MyDefinitionManager.Static.GetPhysicalItemDefinitions().Where(x => x != null && x.Public).ToList();
                 foreach (var cat in cats)
-                    foreach (var d in MyDefinitionManager.Static.GetPhysicalItemDefinitions()
-                                 .Where(d => d.Public && Ctx.CatOf(d.Id.TypeId.ToString()) == cat).OrderBy(d => d.Id.SubtypeName))
-                        sb.Append(d.Id.TypeId.ToString().Replace("MyObjectBuilder_", "")).Append('/').Append(d.Id.SubtypeName).Append("=0\n");
+                    foreach (var x in defs.Where(x => Ctx.CatOf(x.Id) == cat).OrderBy(x => x.Id.SubtypeName, StringComparer.OrdinalIgnoreCase))
+                        if (!list.Contains(x.Id)) list.Add(x.Id);
             }
             catch { }
-            return sb.ToString().TrimEnd('\n');
+            return specialItems = list;
+        }
+
+        static string Short(MyDefinitionId id) => id.TypeId.ToString().Replace("MyObjectBuilder_", "") + "/" + id.SubtypeName;
+
+        /// <summary>
+        /// CustomData kontenera specjalnego jak u Isy (ù): tekst przed nagłówkiem zostaje, potem nagłówek, opis trybów
+        /// i KAŻDY przedmiot z jego wartością (nowe = 0, wpisane przez gracza zostają). Też przedmioty leżące w kontenerze.
+        /// </summary>
+        static string SpecialData(string existing, IEnumerable<MyDefinitionId> extra)
+        {
+            var lines = (existing ?? "").Replace("\r", "").Replace("\n\n\n", "\n\n").Split('\n').ToList();
+            var before = new List<string>();
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var after = new List<string>();
+            int head = -1;
+            bool inList = false, ended = false;
+            for (int k = 0; k < lines.Count; k++)
+            {
+                string ln = lines[k];
+                if (head == -1)
+                {
+                    if (ln.Contains(SpecialHeader)) { head = k; continue; }
+                    before.Add(ln); continue;
+                }
+                if (ln.StartsWith("- ")) continue;
+                var p = ln.Split('=');
+                if (!inList && p.Length != 2) continue;
+                if (inList && p.Length != 2) ended = true;
+                if (ended) { after.Add(ln); continue; }
+                inList = true;
+                values[p[0].Trim()] = p[1].Trim();
+            }
+            if (head == -1)
+            {
+                // bez nagłówka: linie przedmiot=ilość też traktujemy jak listę
+                var keep = new List<string>();
+                foreach (var ln in before)
+                {
+                    var p = ln.Split('=');
+                    if (p.Length == 2 && p[0].Contains("/")) values[p[0].Trim()] = p[1].Trim(); else keep.Add(ln);
+                }
+                before = keep;
+            }
+            while (before.Count > 0 && before[before.Count - 1].Trim().Length == 0) before.RemoveAt(before.Count - 1);
+            while (before.Count > 0 && before[0].Trim().Length == 0) before.RemoveAt(0);
+
+            var outl = new List<string>(before);
+            if (before.Count > 0) outl.Add("");
+            outl.Add("@" + SpecialHeader);
+            outl.Add("");
+            outl.Add("- Normal: stores wanted amount, removes excess. Usage: item=100");
+            outl.Add("- Minimum: stores wanted amount, ignores excess. Usage: item=100M");
+            outl.Add("- Limiter: doesn't store items, only removes excess. Usage: item=100L");
+            outl.Add("- All: stores all items it can get until it's full. Usage: item=All");
+            outl.Add("");
+            var done = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in SpecialItems().Concat(extra))
+            {
+                string key = Short(id);
+                if (!done.Add(key)) continue;
+                outl.Add(key + "=" + (values.TryGetValue(key, out var v) ? v : "0"));
+            }
+            foreach (var kv in values)
+                if (done.Add(kv.Key)) outl.Add(kv.Key + "=" + kv.Value);   // wpisy spoza listy (np. przedmiot z wyłączonego modu)
+            if (after.Count > 0) outl.AddRange(after);
+            return string.Join("\n", outl);
         }
 
         void Specials(World w, MagazynCfg m)
@@ -256,11 +342,22 @@ namespace DaneHud
                 if (budget <= 0) return;
                 var sp = w.Specials[si];
                 var tb = sp.Inv.Block as Sandbox.ModAPI.IMyTerminalBlock;
-                if (!sp.HasHeader && sp.Rules.Count == 0 && tb != null)
+                if (tb != null && (cycle % 40 == 2 || !sp.HasHeader))
                 {
-                    // nowy kontener specjalny: wpisz listę przedmiotów do CustomData (jak Isy)
-                    try { tb.CustomData = SpecialTemplate(tb.CustomData); Note(T("szablon CustomData: ", "CustomData template: ") + sp.Inv.Name); } catch { }
-                    continue;
+                    // jak u Isy: CustomData zawsze z pełną listą przedmiotów (nowe przedmioty dopisywane z =0)
+                    try
+                    {
+                        var inside = sp.Inv.I.GetItems().Select(x => new MyDefinitionId(x.Content.TypeId, x.Content.SubtypeId)).ToList();
+                        string cd = tb.CustomData ?? "";
+                        string nd = SpecialData(cd, inside);
+                        if (nd != cd.Replace("\r", ""))
+                        {
+                            tb.CustomData = nd;
+                            if (!sp.HasHeader) Note(T("lista w CustomData: ", "CustomData list: ") + sp.Inv.Name);
+                        }
+                    }
+                    catch (Exception e) { Plugin.LogOnce("special data", e); }
+                    if (!sp.HasHeader) continue;
                 }
 
                 // 1) wyrzuć to, czego ma nie być albo jest za dużo
@@ -306,6 +403,7 @@ namespace DaneHud
             public readonly List<MyCubeBlock> Tanks = new List<MyCubeBlock>();          // zbiorniki O2/H2 (napełnianie butli)
             public readonly HashSet<long> DockedGrids = new HashSet<long>();
             public readonly List<MyCubeBlock> Reactors = new List<MyCubeBlock>();
+            public readonly List<MyCubeBlock> Weapons = new List<MyCubeBlock>();        // broń bazy i zadokowanych statków (amunicja)
             public readonly List<MyCubeBlock> Assemblers = new List<MyCubeBlock>();
             public readonly List<MyCubeBlock> AllAssemblers = new List<MyCubeBlock>();
             public readonly List<Special> Specials = new List<Special>();
@@ -334,16 +432,24 @@ namespace DaneHud
                     if (!string.IsNullOrEmpty(m.SpecialKw) && name.IndexOf(m.SpecialKw, StringComparison.OrdinalIgnoreCase) >= 0) continue;
                     var inv0 = b.GetInventory(0) as MyInventory;
                     if (inv0 == null) continue;
+                    bool dOn = !(b is Ing.IMyFunctionalBlock dfb) || dfb.Enabled;
+                    if (IsWeapon(b, inv0)) { Weapons.Add(b); continue; }
                     if (b is Ing.IMyCargoContainer || b is Ing.IMyShipConnector || b is Ing.IMyShipDrill || b is Ing.IMyShipGrinder || b is Ing.IMyCollector || b is Ing.IMyShipController)
                         Sources.Add(new Inv { Block = b, I = inv0, Name = name });
                     else if (b is Ing.IMyGasGenerator && MakesGas(b))
+                    {
                         Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => id == IceId });
+                        if (dOn) Generators.Add(b);      // jak u Isy: lód także do generatorów statku
+                    }
                     else if (b is Ing.IMyReactor)
                     {
                         var rd = b.BlockDefinition as MyReactorDefinition;
                         var f = rd?.FuelInfos != null && rd.FuelInfos.Length > 0 ? rd.FuelInfos[0].FuelId : default(MyDefinitionId);
                         Sources.Add(new Inv { Block = b, I = inv0, Name = name, Keep = id => id == f });
+                        if (dOn) Reactors.Add(b);        // jak u Isy: uran także do reaktorów statku
                     }
+                    else if (b is Ing.IMyProductionBlock && !(b is Ing.IMyAssembler) && !(b is Ing.IMyRefinery) && b.InventoryCount > 1 && b.GetInventory(1) is MyInventory dpo)
+                        Sources.Add(new Inv { Block = b, I = dpo, Name = name, Output = true });
                 }
 
                 foreach (var b in c.Blocks.OrderBy(Ctx.NameOf, StringComparer.OrdinalIgnoreCase))
@@ -360,6 +466,8 @@ namespace DaneHud
                     if (IsLocked(name)) continue;
                     var inv0 = b.GetInventory(0) as MyInventory;
                     if (inv0 == null) continue;
+
+                    if (IsWeapon(b, inv0)) { Weapons.Add(b); continue; }
 
                     // kontener specjalny (jak u Isy): zawartość wg CustomData, sortowanie go nie opróżnia
                     bool production = b is Ing.IMyProductionBlock || b is Ing.IMyReactor || b is Ing.IMyGasGenerator;
@@ -413,6 +521,8 @@ namespace DaneHud
                             if (on) Generators.Add(b);
                         }
                     }
+                    else if (b is Ing.IMyProductionBlock && b.InventoryCount > 1 && b.GetInventory(1) is MyInventory po)
+                        Sources.Add(new Inv { Block = b, I = po, Name = name, Output = true });   // inne bloki produkcji (mody): wyjście do magazynu
                     else if (b is Ing.IMyReactor)
                     {
                         var rdef = b.BlockDefinition as MyReactorDefinition;
@@ -435,6 +545,27 @@ namespace DaneHud
                             d.TryGetValue(it.Content.SubtypeName, out var v); d[it.Content.SubtypeName] = v + (double)it.Amount;
                         }
                 return d;
+            }
+
+            /// <summary>
+            /// Broń z własnym magazynkiem: wieżyczki i działa (IMyUserControllableGun) albo bloki broni z modów
+            /// (np. WeaponCore jako sorter), których magazyn przyjmuje tylko amunicję. Narzędzia statku (wiertła, szlifierki) nie.
+            /// </summary>
+            public static bool IsWeapon(MyCubeBlock b, MyInventory inv)
+            {
+                if (b is Ing.IMyShipDrill || b is Ing.IMyShipGrinder || b is Ing.IMyShipWelder) return false;
+                if (b is Ing.IMyUserControllableGun) return true;
+                if (b is Ing.IMyCargoContainer || b is Ing.IMyProductionBlock || b is Ing.IMyShipConnector || b is Ing.IMyShipController
+                    || b is Ing.IMyReactor || b is Ing.IMyGasGenerator || b is Ing.IMyGasTank) return false;
+                try
+                {
+                    var con = inv?.Constraint;
+                    if (con == null) return false;
+                    int n = 0;
+                    foreach (var i in con.ConstrainedIds) { if (Ctx.CatOf(i) != ItemCat.Ammo) return false; n++; }
+                    return n > 0;
+                }
+                catch { return false; }
             }
 
             public bool IsLocked(string name)
@@ -595,7 +726,7 @@ namespace DaneHud
                 {
                     if (budget <= 0) return;
                     var id = new MyDefinitionId(item.Content.TypeId, item.Content.SubtypeId);
-                    var cat = Ctx.CatOf(id.TypeId.ToString());
+                    var cat = Ctx.CatOf(id);
 
                     // butle (jak u Isy): niepełna do zbiornika / generatora, który ją napełni; pełna do kontenera Bottles
                     if (cat == ItemCat.Bottle && Plugin.ActiveProfile?.Magazyn?.FillBottles != false)
@@ -799,20 +930,145 @@ namespace DaneHud
             }
         }
 
-        void Uranium(World w, MagazynCfg m)
+        /// <summary>
+        /// Uran jak u Isy (Ċ): reaktory nie pobierają same z konwejera; każdy ma mieć dokładnie ustawioną ilość —
+        /// brak dokładamy z magazynu, nadmiar wraca do kontenera sztabek; przy braku uranu wszystkie po równo (ten sam % celu).
+        /// Także reaktory zadokowanych statków. Po wstaniu z fotela albo po oddokowaniu reaktor znowu pobiera sam.
+        /// </summary>
+        void Uranium(World w, MagazynCfg m, bool scriptOnBase = false)
         {
-            if (w.Reactors.Count == 0) return;
-            foreach (var r in w.Reactors)
+            // reaktorów bazy pilnuje skrypt PB (24/7) — plugin obsługuje tylko zadokowane statki
+            var reactors = scriptOnBase ? w.Reactors.Where(r => w.DockedGrids.Contains(r.CubeGrid.EntityId)).ToList() : w.Reactors;
+            var now = new HashSet<long>(reactors.Select(r => r.EntityId));
+            foreach (var id in reactorOff.Where(x => !now.Contains(x)).ToList())
+            {
+                if (MyEntities.TryGetEntityById(id, out var e) && e is Ing.IMyReactor rr && !e.Closed && !rr.UseConveyorSystem)
+                    try { rr.UseConveyorSystem = true; } catch { }
+                reactorOff.Remove(id);
+            }
+            if (reactors.Count == 0) return;
+            var list = new List<KeyValuePair<MyCubeBlock, double>>();
+            MyDefinitionId fuel = default(MyDefinitionId);
+            double sumHave = 0, sumTarget = 0;
+            foreach (var r in reactors)
             {
                 var def = r.BlockDefinition as MyReactorDefinition;
                 if (def?.FuelInfos == null || def.FuelInfos.Length == 0) continue;
-                var fuel = def.FuelInfos[0].FuelId;
+                fuel = def.FuelInfos[0].FuelId;
                 var inv = r.GetInventory(0) as MyInventory;
                 if (inv == null) continue;
+                if (r is Ing.IMyReactor ir && ir.UseConveyorSystem)
+                    try { ir.UseConveyorSystem = false; reactorOff.Add(r.EntityId); } catch { }
+                else reactorOff.Add(r.EntityId);
                 double target = r.CubeGrid.GridSizeEnum == MyCubeSize.Large ? m.UraniumLarge : m.UraniumSmall;
+                if (target <= 0) continue;
                 double have = (double)inv.GetItemAmount(fuel);
-                if (target <= 0 || have >= target * 0.75) continue;
-                Fill(w.Storage(ItemCat.Ingot), inv, fuel, target - have, T("paliwo reaktora", "reactor fuel"));
+                if (have > target + 0.05)
+                {
+                    // nadmiar do kontenera sztabek (bazy)
+                    var dst = w.Storage(ItemCat.Ingot).FirstOrDefault(x => x.Fill < 0.99);
+                    if (dst != null)
+                        foreach (var item in inv.GetItems().Where(x => x.Content.TypeId == fuel.TypeId && x.Content.SubtypeId == fuel.SubtypeId).ToList())
+                        {
+                            double ex = (double)inv.GetItemAmount(fuel) - target;
+                            if (ex <= 0.05) break;
+                            Move(inv, item, dst.I, ex, T("nadmiar paliwa reaktora", "reactor fuel excess"));
+                        }
+                }
+                else if (have < target - 0.05)
+                    Fill(w.Storage(ItemCat.Ingot), inv, fuel, target - have, T("paliwo reaktora", "reactor fuel"));
+                have = (double)inv.GetItemAmount(fuel);
+                sumHave += have; sumTarget += target;
+                list.Add(new KeyValuePair<MyCubeBlock, double>(r, target));
+            }
+            // za mało uranu dla wszystkich: wyrównaj (każdy ten sam % swojego celu)
+            if (sumTarget <= 0 || sumHave >= sumTarget * 0.999) return;
+            double ratio = sumHave / sumTarget;
+            foreach (var a in list)
+            {
+                var ai = a.Key.GetInventory(0) as MyInventory;
+                double aHave = (double)ai.GetItemAmount(fuel), aWant = ratio * a.Value;
+                if (aHave <= aWant + 0.05) continue;
+                foreach (var b in list)
+                {
+                    if (b.Key == a.Key || budget <= 0) continue;
+                    var bi = b.Key.GetInventory(0) as MyInventory;
+                    double bHave = (double)bi.GetItemAmount(fuel), bWant = ratio * b.Value;
+                    if (bHave >= bWant - 0.05) continue;
+                    double give = Math.Min(bWant - bHave, (double)ai.GetItemAmount(fuel) - aWant);
+                    if (give <= 0.05) break;
+                    var items = ai.GetItems().Where(x => x.Content.TypeId == fuel.TypeId && x.Content.SubtypeId == fuel.SubtypeId).ToList();
+                    if (items.Count == 0) break;
+                    Move(ai, items[0], bi, give, T("wyrównanie paliwa", "fuel balancing"));
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------ amunicja do broni
+
+        /// <summary>
+        /// Amunicja do broni bazy i zadokowanych statków (Isy broni nie obsługiwał): każda broń dostaje swoją amunicję
+        /// do AmmoFillPct % objętości. Najpierw rodzaj, który już ma; inaczej pierwszy pasujący, który jest w magazynie.
+        /// </summary>
+        void Ammo(World w, MagazynCfg m)
+        {
+            if (w.Weapons.Count == 0) return;
+            var storage = w.Storage(ItemCat.Ammo);
+            var stock = new List<MyDefinitionId>();
+            foreach (var s in storage.Concat(w.Cargo).Distinct())
+                foreach (var it in s.I.GetItems())
+                {
+                    var id = new MyDefinitionId(it.Content.TypeId, it.Content.SubtypeId);
+                    if (Ctx.CatOf(id) == ItemCat.Ammo && !stock.Contains(id)) stock.Add(id);
+                }
+            if (stock.Count == 0) return;
+            double pct = Math.Max(5, Math.Min(100, m.AmmoFillPct)) / 100.0;
+            foreach (var b in w.Weapons)
+            {
+                if (budget <= 0) return;
+                var inv = b.GetInventory(0) as MyInventory;
+                if (inv == null || (double)inv.MaxVolume <= 0) continue;
+                if ((double)inv.CurrentVolume >= (double)inv.MaxVolume * pct * 0.75) continue;
+                MyDefinitionId ammo = default(MyDefinitionId);
+                bool found = false;
+                foreach (var it in inv.GetItems().OrderByDescending(x => (double)x.Amount))
+                {
+                    var id = new MyDefinitionId(it.Content.TypeId, it.Content.SubtypeId);
+                    if (stock.Contains(id)) { ammo = id; found = true; break; }
+                }
+                if (!found)
+                    foreach (var id in stock)
+                        if (inv.CheckConstraint(id)) { ammo = id; found = true; break; }
+                if (!found) continue;
+                float vol = 0.016f;
+                try { vol = Math.Max(0.0001f, MyDefinitionManager.Static.GetPhysicalItemDefinition(ammo).Volume); } catch { }
+                double need = Math.Floor(((double)inv.MaxVolume * pct - (double)inv.CurrentVolume) / vol);
+                if (need < 1) continue;
+                Fill(storage.Concat(w.Cargo).Distinct().ToList(), inv, ammo, need, T("amunicja", "ammo"));
+            }
+        }
+
+        // ------------------------------------------------------------------ zapełnienie w nazwach (showFillLevel u Isy)
+
+        static readonly System.Text.RegularExpressions.Regex FillRx = new System.Text.RegularExpressions.Regex(@"\s*\(\d+\.?\d*\%\)");
+
+        /// <summary>Jak u Isy: kontenery typowe i specjalne mają w nazwie „(73.4%)”; wyłączone — procent znika.</summary>
+        void FillLevel(World w, MagazynCfg m)
+        {
+            var list = w.Typed.Values.SelectMany(l => l).Concat(w.Specials.Select(sp => sp.Inv)).Distinct();
+            foreach (var x in list)
+            {
+                if (!(x.Block is Sandbox.ModAPI.IMyTerminalBlock tb)) continue;
+                string old = tb.CustomName ?? "";
+                string name = FillRx.Replace(old, "").TrimEnd(' ');
+                if (m.FillLevel)
+                {
+                    double max = (double)x.I.MaxVolume;
+                    double pct = max > 0 ? Math.Round((double)x.I.CurrentVolume / max * 100, 1) : 0;
+                    name = (name + " (" + pct.ToString(System.Globalization.CultureInfo.InvariantCulture) + "%)").Replace("  ", " ");
+                }
+                if (name != old)
+                    try { tb.CustomName = name; } catch (Exception e) { Plugin.LogOnce("fill level", e); }
             }
         }
 

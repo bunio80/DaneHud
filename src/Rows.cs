@@ -8,7 +8,7 @@ using Ing = Sandbox.ModAPI.Ingame;
 
 namespace DaneHud
 {
-    internal enum RowKind { Text, Pair, Bar, Space }
+    internal enum RowKind { Text, Pair, Bar, Space, Cols }
 
     internal struct Row
     {
@@ -16,6 +16,8 @@ namespace DaneHud
         public string Left, Right;
         public Color LeftColor, RightColor, BarColor;
         public float Fraction;
+        public string[] Cols;
+        public float First;                      // RowKind.Cols: szerokość 1. kolumny (część okna, 0 = domyślna)                    // RowKind.Cols: 1. kolumna do lewej, reszta do prawej w równych kolumnach
         public bool Center, AlignRight;
     }
 
@@ -48,6 +50,8 @@ namespace DaneHud
             rows.Add(new Row { Kind = RowKind.Bar, Fraction = Math.Max(0f, Math.Min(1f, v)), Right = Fmt.Pct(v), BarColor = c ?? bar, RightColor = value });
         }
         void Space() => rows.Add(new Row { Kind = RowKind.Space });
+        void Cols(Color first, Color rest, params string[] cols) => ColsW(0f, first, rest, cols);
+        void ColsW(float firstW, Color first, Color rest, params string[] cols) => rows.Add(new Row { Kind = RowKind.Cols, Cols = cols, First = firstW, LeftColor = first, RightColor = rest });
 
         /// <summary>Linia "klucz: wartość" do prawej albo cały tekst.</summary>
         void Line(string line, bool align, Color c)
@@ -105,6 +109,7 @@ namespace DaneHud
                 case ElementKind.Property: Property(e, c); break;
                 case ElementKind.Queue: Queue(e, c); break;
                 case ElementKind.Magazyn: MagazynState(e); break;
+                case ElementKind.RefineryCalc: RefineryCalc(e, c); break;
             }
         }
 
@@ -476,6 +481,71 @@ namespace DaneHud
                 Text("  " + string.Join("  ", list.Skip(i).Take(3)), text);
         }
 
+        static string CalcTime(double seconds)
+        {
+            if (double.IsNaN(seconds) || double.IsInfinity(seconds)) return "-";
+            if (seconds < 10) return seconds.ToString(seconds < 1 ? "0.00" : "0.0", CultureInfo.InvariantCulture) + "s";
+            return Fmt.TimeShort(seconds);
+        }
+
+        void RefineryCalc(ElementCfg e, Ctx c)
+        {
+            double fixedOre = e.Quota > 0 ? e.Quota : 1000;
+            var groups = c.RefineryCalc(e.Filter, e.HiddenKinds);
+            if (groups.Count == 0) { Text(T("Rafinerie: brak", "Refineries: none"), text); return; }
+            Dictionary<string, ItemAmount> stock = e.FromStock ? c.Items(false) : null;
+            float firstW = e.FromStock ? 0.3f : 0f;
+            bool firstGroup = true;
+            foreach (var g in groups)
+            {
+                if (!firstGroup) Space();
+                firstGroup = false;
+                bool many = g.Count > 1;
+                // nazwa bloku (też z modów), średnia prędkość i uzysk z modułami
+                Pair(g.Name, "x" + g.Speed.ToString("0.##", CultureInfo.InvariantCulture) + "  " + Math.Round(g.Yield * 100) + "%", title);
+                string head = e.FromStock ? T("Ruda w bazie", "Ore in base") : Fmt.Mass(fixedOre);
+                if (many) ColsW(firstW, text, title, head, "1x", g.Count + "x");
+                else ColsW(firstW, text, title, head, "1x");
+                double sumOne = 0, sumAll = 0;
+                int lines = 0, shown = 0;
+                foreach (var o in g.Ores)
+                {
+                    if (e.Hidden.Contains(o.Ore)) continue;
+                    double ore = fixedOre;
+                    if (stock != null)
+                    {
+                        ore = stock.TryGetValue("MyObjectBuilder_Ore/" + o.Ore, out var ia) ? ia.Amount : 0;
+                        if (ore <= 0) continue;
+                    }
+                    double runs = ore / o.OrePerRun;
+                    double work = runs * o.SecondsPerRun;                  // sekundy przy prędkości 1
+                    double tOne = g.Speed > 0 ? work / g.Speed : double.PositiveInfinity;
+                    double tAll = g.SumSpeed > 0 ? work / g.SumSpeed : double.PositiveInfinity;
+                    sumOne += tOne; sumAll += tAll;
+                    shown++;
+                    if (e.MaxLines > 0 && lines >= e.MaxLines) continue;
+                    lines++;
+                    string label = Fmt.Symbol(o.Ore) + (stock != null ? "  " + Fmt.Mass(ore) : "");
+                    string one = Ingots(o, runs, g.Yield) + " " + CalcTime(tOne);
+                    if (many) ColsW(firstW, text, value, label, one, Ingots(o, runs, g.AllYield) + " " + CalcTime(tAll));
+                    else ColsW(firstW, text, value, label, one);
+                }
+                if (shown == 0) { Text(e.FromStock ? T("  brak rudy w bazie", "  no ore in base") : T("  brak wybranych rud", "  no ores selected"), warn); continue; }
+                if (e.FromStock)
+                {
+                    // suma czasu wszystkich rud z bazy
+                    if (many) ColsW(firstW, title, title, T("Razem", "Total"), CalcTime(sumOne), CalcTime(sumAll));
+                    else ColsW(firstW, title, title, T("Razem", "Total"), CalcTime(sumOne));
+                }
+            }
+        }
+
+        static string Ingots(Ctx.RefineryCalcOre o, double runs, double yield)
+        {
+            if (o.Results.Count == 1) return Fmt.Mass(runs * o.Results[0].Value * yield);
+            return string.Join(" ", o.Results.Select(r => Fmt.Symbol(r.Key) + Fmt.Mass(runs * r.Value * yield)));
+        }
+
         void Queue(ElementCfg e, Ctx c)
         {
             var q = c.Queue(e.Filter);
@@ -737,6 +807,7 @@ namespace DaneHud
                     case ElementKind.PowerBalance: b.Pair(T("Produkcja prądu:", "Power output:"), "66.5 MW / 2.5 GW"); b.Pair(T("Silniki jonowe (24):", "Ion thrusters (24):"), "12 MW / 80 MW"); break;
                     case ElementKind.HydrogenBalance: b.Pair(T("Bilans wodoru:", "H2 balance:"), "-1.2 kL/s", b.warn); break;
                     case ElementKind.Thrust: b.Pair(T("Masa statku:", "Ship mass:"), "1.2 kt"); b.Pair(Ctx.DirNames[2] + ":", "24 MN  20 m/s²  2.04x"); break;
+                    case ElementKind.RefineryCalc: b.Pair("Elite Refinery", "x4  100%", b.title); b.Cols(b.text, b.title, "1 t", "1x", "6x"); b.Cols(b.text, b.value, "Fe", "700 kg 23s", "700 kg 3.9s"); break;
                     case ElementKind.Refineries: b.Pair(T("10x Rafinerie  5h 12m", "10x Refineries  5h 12m"), "U Ag Si Ni"); break;
                     case ElementKind.Autocrafting:
                         b.Pair("SteelPlate", "200372 > 200000"); b.Pair("Motor", "1200 < 5000", b.warn); break;

@@ -91,6 +91,9 @@ namespace DaneHud
             Check(x, y, T("Uran do reaktorów: duże / małe:", "Uranium into reactors: large / small:"), m.Uranium, v => m.Uranium = v);
             Number(x + 0.45f, y, 0.08f, m.UraniumLarge, v => m.UraniumLarge = Math.Max(0, v));
             Number(x + 0.54f, y, 0.08f, m.UraniumSmall, v => m.UraniumSmall = Math.Max(0, v)); y += row;
+            Check(x, y, T("Amunicja do broni (też statku), wypełnienie %:", "Ammo into weapons (docked too), fill %:"), m.AmmoWeapons, v => m.AmmoWeapons = v);
+            Number(x + 0.45f, y, 0.08f, m.AmmoFillPct, v => m.AmmoFillPct = (int)Math.Max(5, Math.Min(100, v)));
+            Check(x + 0.58f, y, T("% zapełnienia w nazwach", "fill % in names"), m.FillLevel, v => m.FillLevel = v); y += row;
 
             // --- autocrafting
             Check(x, y, T("Autocrafting wg limitów", "Autocrafting by limits"), m.Autocraft, v =>
@@ -120,7 +123,7 @@ namespace DaneHud
                 var l2 = Label(x, y, T("Bez połączenia konwejerem (nie da się przenieść): ", "Not connected by conveyor (cannot move): ") + string.Join(", ", mg.Unreachable.Take(5)), 0.64f);
                 l2.ColorMask = new Vector4(1f, 0.6f, 0.3f, 1f); y += row * 0.7f;
             }
-            foreach (var r in mg.Recent.Take(3)) { Label(x, y, r, 0.6f); y += row * 0.6f; }
+            foreach (var r in mg.Recent.Take(2)) { Label(x, y, r, 0.6f); y += row * 0.6f; }
 
             Button(0f, 0.43f, "OK", () => CloseScreen(false), 0.18f, 0.048f);
         }

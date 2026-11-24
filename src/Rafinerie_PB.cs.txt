@@ -1,4 +1,4 @@
-// Grid HUD & Logistics — Refineries v2: refineries 24/7 on the server (rafinerie 24/7 na serwerze).
+// Grid HUD & Logistics — Refineries v3 + reactors: 24/7 on the server (rafinerie i reaktory 24/7 na serwerze).
 // Same refinery rules as players know from Isy's Inventory Manager (own implementation)
 // (z poprawką „każda ruda po równo”), bez reszty Isy:
 //  1. lista rud: najpierw kolejność z priority=, potem rudy, których sztabek jest najmniej
@@ -6,13 +6,19 @@
 //  3. każda ruda wg listy po równo: ceil(suma / liczba rafinerii), nadmiar > 10% wraca
 //  4. pierwsza ruda z listy, którą rafineria ma, idzie na początek kolejki
 //  + sztabki z wyjść rafinerii do kontenerów Ingots (przy wyłączonym konwejerze gra ich nie wypycha)
+//  + reaktory bazy (jak uranium balancing u Isy): bez pobierania z konwejera, dokładnie ustawiona ilość uranu,
+//    nadmiar do Ingots, przy braku uranu wszystkie po równo (ten sam % celu)
 // Settings in CustomData (written by the plugin: /data » Logistics):
 //   priority=Uranium, Stone   ores=Ores   ingots=Ingots   skip=!manual, Locked
+//   uranium=true   ularge=200   usmall=50
 
 const string Tag = "[DaneHud-Rafinerie]";
 string oreKw = "Ores", ingotKw = "Ingots";
 List<string> prio = new List<string>(), skip = new List<string> { "!manual", "Locked" };
 List<IMyRefinery> refs = new List<IMyRefinery>();
+List<IMyReactor> reactors = new List<IMyReactor>();
+bool uranium = false;
+double uLarge = 200, uSmall = 50;
 List<IMyTerminalBlock> cargo = new List<IMyTerminalBlock>(), ores = new List<IMyTerminalBlock>(), ingots = new List<IMyTerminalBlock>();
 List<MyInventoryItem> items = new List<MyInventoryItem>();
 List<MyItemType> allOres = new List<MyItemType>();
@@ -45,8 +51,12 @@ void Scan()
         else if (k == "ores") oreKw = v;
         else if (k == "ingots") ingotKw = v;
         else if (k == "skip") skip = Split(v);
+        else if (k == "uranium") uranium = v.ToLower() == "true";
+        else if (k == "ularge") double.TryParse(v, out uLarge);
+        else if (k == "usmall") double.TryParse(v, out uSmall);
     }
     GridTerminalSystem.GetBlocksOfType(refs, r => !Skip(r) && r.Enabled);
+    GridTerminalSystem.GetBlocksOfType(reactors, r => !Skip(r) && r.Enabled);
     GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(cargo, c => !Skip(c));
     ores.Clear(); ingots.Clear();
     foreach (var c in cargo)
@@ -90,6 +100,7 @@ public void Main(string arg, UpdateType src)
             foreach (var c in ingots)
                 if (HasSpace(c.GetInventory(0)) && Move(o, it, c.GetInventory(0), (double)it.Amount) > 0) break;
     }
+    if (uranium) Reactors();
     if (refs.Count == 0) { Status(); return; }
 
     // ile jest rudy (magazyn + rafinerie) i sztabek
@@ -172,8 +183,60 @@ public void Main(string arg, UpdateType src)
     Status();
 }
 
+// reaktory jak uranium balancing u Isy: dokładnie cel, nadmiar do Ingots, przy braku po równo
+void Reactors()
+{
+    if (reactors.Count == 0) return;
+    var fuel = MyItemType.MakeIngot("Uranium");
+    double sumHave = 0, sumTarget = 0;
+    foreach (var r in reactors)
+    {
+        if (r.UseConveyorSystem) r.UseConveyorSystem = false;
+        var inv = r.GetInventory(0);
+        double target = r.CubeGrid.GridSizeEnum == MyCubeSize.Large ? uLarge : uSmall;
+        if (target <= 0) continue;
+        double have = (double)inv.GetItemAmount(fuel);
+        if (have > target + 0.05)
+        {
+            var it = inv.FindItem(fuel);
+            if (it.HasValue)
+                foreach (var c in ingots)
+                    if (HasSpace(c.GetInventory(0)) && Move(inv, it.Value, c.GetInventory(0), have - target) > 0) break;
+        }
+        else if (have < target - 0.05)
+        {
+            double need = target - have;
+            foreach (var c in ingots.Concat(cargo))
+            {
+                if (need <= 0.05) break;
+                var ci = c.GetInventory(0);
+                var it = ci.FindItem(fuel);
+                if (it.HasValue) need -= Move(ci, it.Value, inv, need);
+            }
+        }
+        sumHave += (double)inv.GetItemAmount(fuel); sumTarget += target;
+    }
+    if (sumTarget <= 0 || sumHave >= sumTarget * 0.999) return;
+    double ratio = sumHave / sumTarget;
+    foreach (var a in reactors)
+    {
+        var ai = a.GetInventory(0);
+        double aWant = ratio * (a.CubeGrid.GridSizeEnum == MyCubeSize.Large ? uLarge : uSmall);
+        foreach (var b in reactors)
+        {
+            if (a == b) continue;
+            var bi = b.GetInventory(0);
+            double bWant = ratio * (b.CubeGrid.GridSizeEnum == MyCubeSize.Large ? uLarge : uSmall);
+            double give = Math.Min(bWant - (double)bi.GetItemAmount(fuel), (double)ai.GetItemAmount(fuel) - aWant);
+            if (give <= 0.05) continue;
+            var it = ai.FindItem(fuel);
+            if (it.HasValue) Move(ai, it.Value, bi, give);
+        }
+    }
+}
+
 void Status()
 {
-    Echo("Grid HUD & Logistics: Refineries v2\nRefineries / Rafinerie: " + refs.Count + "\nKontenery rud: " + ores.Count + ", sztabek: " + ingots.Count +
+    Echo("Grid HUD & Logistics: Refineries v3 + reactors\nRefineries / Rafinerie: " + refs.Count + "\nReactors / Reaktory: " + (uranium ? reactors.Count.ToString() : "off") + "\nKontenery rud: " + ores.Count + ", sztabek: " + ingots.Count +
          "\nNajpierw: " + current + "\nPrzeniesienia: " + moves);
 }

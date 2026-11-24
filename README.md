@@ -24,6 +24,12 @@ LCD panels, a script or a mod for them. It has two parts.
 - Elements familiar from Automatic LCDs 2: inventory lists with bars, power and batteries, H2/O2, cargo fill,
   refineries, assembler queue, damage, working blocks, and `Details` of any block.
   `Details` can pick lines by text, for example a shield's `CapHp:`.
+- **Refinery calculator:** for each refinery type (modded and tiered ones too) it shows how many ingots
+  you get from a chosen amount of ore and how long it takes, for one refinery and for all of that type
+  together, including speed and yield modules. It can also use the ore you have in the base and add up the total time.
+  You pick the refinery types and ores with checkboxes.
+- **Window placement with a live view:** while you move or resize a window, the game, its HUD and your
+  other windows stay visible.
 - **Per-grid profiles.** Your base, your miner and your ship each get their own windows. The right set appears
   when you sit down.
 - **Named templates** of window sets, which you can load into any grid.
@@ -32,17 +38,25 @@ LCD panels, a script or a mod for them. It has two parts.
 **2. Logistics.** This part takes over the work of a typical inventory script. It runs inside the plugin while you sit in the grid.
 - **Sorting** into containers named `Ores`, `Ingots`, `Components`, `Tools`, `Ammo` or `Bottles`.
   It also empties assembler outputs, cockpits, connectors and idle assemblers.
-- **Special containers:** `Special` in the name, and the wanted items listed in Custom Data.
+- **Fill level** in the names of sorted and special containers, for example `Ores (73.4%)`.
+- **Special containers:** `Special` in the name. Custom Data always holds the full item list (mods too),
+  where you type the wanted amounts.
 - **Refineries:** your ore order comes first, picked from a list of every ore in the game, mods included.
   Every ore is split equally across all refineries. A full refinery makes room for the ore that matters.
-- **Ice** goes into H2/O2 generators and **uranium** into reactors.
+- **Ice** goes into H2/O2 generators, and **bottles** are refilled in tanks or generators.
+- **Uranium:** every reactor holds exactly the amount you set. Missing uranium is added, the excess goes back
+  to `Ingots`, and if there isn't enough for all of them it is split evenly.
+- **Ammo** goes into turrets and guns (WeaponCore blocks too), up to the fill level you set.
+- **Docked ships** are unloaded into the base containers, and their reactors, generators and weapons
+  are refuelled and rearmed. Put `[No Sorting]` or `[No IIM]` in a connector's or grid's name to skip a ship.
 - **Autocrafting** by limits:
   - The missing amount is split evenly across all assemblers.
   - Queues are rebalanced, and priority items are always built first.
   - It can learn new items: put `!learn` in an assembler's name.
   - Any item can be hidden from the HUD while its limit still works.
-- **Refineries 24/7 (optional):** one click installs a small programmable block script, about 6,000 characters.
-  It keeps the refineries balanced on the server while you are away, even on another Nexus server.
+- **Refineries and reactors 24/7 (optional):** one click installs a small programmable block script,
+  about 11,000 characters. It keeps the refineries balanced and the base reactors fuelled on the server
+  while you are away, even on another Nexus server. The plugin updates the script by itself.
 
 The keywords and Custom Data formats are the same as those used by popular inventory scripts, so an existing
 base works without renaming anything.
@@ -98,6 +112,11 @@ do nich paneli LCD, skryptu ani moda. Plugin ma dwie części.
 - Elementy znane z Automatic LCDs 2: listy przedmiotów z paskami, prąd i baterie, H2/O2, zapełnienie ładowni,
   rafinerie, kolejka montażowni, uszkodzenia, działające bloki i `Details` dowolnego bloku.
   `Details` potrafi wybrać linie po tekście, np. `CapHp:` tarczy.
+- **Kalkulator rafinerii:** dla każdego rodzaju rafinerii (także z modów i tierów) pokazuje, ile sztabek
+  wyjdzie z wybranej ilości rudy i w jakim czasie, dla jednej rafinerii i dla wszystkich tego rodzaju razem,
+  z modułami prędkości i uzysku. Może też policzyć rudę, którą masz w bazie, i podać łączny czas.
+  Rodzaje rafinerii i rudy wybierasz checkboxami.
+- **Ustawianie okna z podglądem:** gdy przesuwasz albo zmieniasz rozmiar okna, widać grę, jej HUD i pozostałe okna.
 - **Profile gridów.** Baza, koparka i statek mają osobne okna. Właściwy zestaw pojawia się, gdy siadasz.
 - **Nazwane szablony** zestawów okien, które wczytasz do dowolnego grida.
 - Język polski i angielski.
@@ -105,17 +124,25 @@ do nich paneli LCD, skryptu ani moda. Plugin ma dwie części.
 **2. Logistyka.** Ta część przejmuje pracę typowego skryptu magazynowego. Działa w pluginie, gdy siedzisz w gridzie.
 - **Sortowanie** do kontenerów z nazwą `Ores`, `Ingots`, `Components`, `Tools`, `Ammo` albo `Bottles`.
   Opróżnia też wyjścia montażowni, kokpity, konektory i stojące montażownie.
-- **Kontenery specjalne:** `Special` w nazwie, a lista przedmiotów w Custom Data.
+- **Zapełnienie w nazwach** kontenerów sortowanych i specjalnych, np. `Ores (73.4%)`.
+- **Kontenery specjalne:** `Special` w nazwie. W Custom Data jest zawsze pełna lista przedmiotów (także z modów),
+  przy których wpisujesz chciane ilości.
 - **Rafinerie:** najpierw rudy w Twojej kolejności, wybranej z listy wszystkich rud w grze (także z modów).
   Każda ruda jest dzielona po równo między wszystkie rafinerie. Pełna rafineria robi miejsce dla ważnej rudy.
-- **Lód** trafia do generatorów H2/O2, a **uran** do reaktorów.
+- **Lód** trafia do generatorów H2/O2, a **butle** są napełniane w zbiornikach albo generatorach.
+- **Uran:** każdy reaktor ma dokładnie ustawioną ilość. Brak jest dokładany, nadmiar wraca do `Ingots`,
+  a gdy uranu nie starcza dla wszystkich, jest dzielony po równo.
+- **Amunicja** trafia do wieżyczek i dział (także bloków WeaponCore) do ustawionego wypełnienia.
+- **Zadokowane statki** są rozładowywane do kontenerów bazy, a ich reaktory, generatory i broń dostają paliwo,
+  lód i amunicję. `[No Sorting]` albo `[No IIM]` w nazwie konektora lub grida wyklucza statek.
 - **Autocrafting** według limitów:
   - brakująca ilość jest dzielona po równo na wszystkie montażownie;
   - kolejki są wyrównywane, a przedmioty z priorytetem zawsze idą pierwsze;
   - nauka nowych przedmiotów: wpisz `!learn` w nazwie montażowni;
   - każdy przedmiot można ukryć na HUD, a jego limit działa dalej.
-- **Rafinerie 24/7 (opcjonalnie):** jednym kliknięciem wgrywasz mały skrypt do bloku programowalnego
-  (ok. 6 tys. znaków). Pilnuje rafinerii na serwerze, gdy Cię nie ma, także gdy jesteś na innym serwerze Nexus.
+- **Rafinerie i reaktory 24/7 (opcjonalnie):** jednym kliknięciem wgrywasz mały skrypt do bloku programowalnego
+  (ok. 11 tys. znaków). Pilnuje rafinerii i paliwa w reaktorach bazy na serwerze, gdy Cię nie ma, także gdy
+  jesteś na innym serwerze Nexus. Plugin sam aktualizuje skrypt.
 
 Słowa w nazwach kontenerów i format Custom Data są takie same jak w popularnych skryptach magazynowych,
 więc istniejąca baza działa bez zmiany nazw.

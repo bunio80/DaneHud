@@ -180,6 +180,24 @@ namespace DaneHud
                         break;
                     }
 
+                    case RowKind.Cols:
+                    {
+                        var cols = r.Cols ?? new string[0];
+                        int n = cols.Length;
+                        if (n == 0) break;
+                        float firstW = n > 1 ? width * (r.First > 0 ? r.First : 0.16f) : width;
+                        Text(font, Fit(font, cols[0] ?? "", scale, firstW), new Vector2(x, y), scale, r.LeftColor,
+                            MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, false, firstW);
+                        float colW = n > 1 ? (width - firstW) / (n - 1) : 0f;
+                        for (int ci = 1; ci < n; ci++)
+                        {
+                            float rx = x + firstW + colW * ci;
+                            Text(font, Fit(font, cols[ci] ?? "", scale, colW - 0.006f), new Vector2(rx, y), scale, r.RightColor,
+                                MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_TOP, false, colW);
+                        }
+                        break;
+                    }
+
                     case RowKind.Bar:
                     {
                         string pct = r.Right ?? "";

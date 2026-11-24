@@ -75,6 +75,26 @@ namespace DaneHud
 
         // ------------------------------------------------------------------ przedmioty
 
+        static readonly Dictionary<MyDefinitionId, ItemCat> catCache = new Dictionary<MyDefinitionId, ItemCat>();
+
+        /// <summary>Kategoria wg Id typu, a gdy to „inne” — wg definicji przedmiotu (np. amunicja z modów z innym TypeId).</summary>
+        internal static ItemCat CatOf(MyDefinitionId id)
+        {
+            var c = CatOf(id.TypeId.ToString());
+            if (c != ItemCat.Other) return c;
+            if (catCache.TryGetValue(id, out var k)) return k;
+            k = ItemCat.Other;
+            try
+            {
+                var def = MyDefinitionManager.Static.GetPhysicalItemDefinition(id);
+                if (def is MyAmmoMagazineDefinition) k = ItemCat.Ammo;
+                else if (def is MyPhysicalItemDefinition p && p.Id.TypeId.ToString().IndexOf("Ammo", StringComparison.OrdinalIgnoreCase) >= 0) k = ItemCat.Ammo;
+            }
+            catch { }
+            catCache[id] = k;
+            return k;
+        }
+
         internal static ItemCat CatOf(string typeId)
         {
             switch (typeId)
@@ -474,6 +494,138 @@ namespace DaneHud
                 if (secs > r.MaxSeconds) r.MaxSeconds = secs;
             }
             return r;
+        }
+
+        // ------------------------------------------------------------------ kalkulator rafinerii
+
+        public class RefineryCalcOre
+        {
+            public string Ore;                       // podtyp rudy
+            public double OrePerRun;                 // kg rudy na jedno przejście receptury
+            public double SecondsPerRun;             // czas receptury (bez prędkości bloku)
+            public List<KeyValuePair<string, double>> Results = new List<KeyValuePair<string, double>>();   // sztabka » ilość na przejście
+        }
+
+        public class RefineryCalcGroup
+        {
+            public string Name, DefId;
+            public int Count;
+            public double SumSpeed, SumYield, SumSpeedYield;
+            /// <summary>Średnia prędkość jednej rafinerii: (RefineSpeed + Productivity) × mnożnik świata.</summary>
+            public double Speed => Count > 0 ? SumSpeed / Count : 0;
+            /// <summary>Średni uzysk jednej rafinerii: MaterialEfficiency × Effectiveness.</summary>
+            public double Yield => Count > 0 ? SumYield / Count : 0;
+            /// <summary>Uzysk wszystkich razem (ruda dzielona wg prędkości, żeby skończyły równo).</summary>
+            public double AllYield => SumSpeed > 0 ? SumSpeedYield / SumSpeed : Yield;
+            public List<RefineryCalcOre> Ores = new List<RefineryCalcOre>();
+        }
+
+        static readonly Dictionary<string, List<RefineryCalcOre>> calcCache = new Dictionary<string, List<RefineryCalcOre>>();
+
+        /// <summary>Receptury rafinerii (ruda » sztabki), w kolejności z definicji, każda ruda raz.</summary>
+        public static List<RefineryCalcOre> CalcOres(MyRefineryDefinition def)
+        {
+            string key = def.Id.ToString();
+            if (calcCache.TryGetValue(key, out var list)) return list;
+            list = new List<RefineryCalcOre>();
+            var seen = new HashSet<string>();
+            try
+            {
+                foreach (var cls in def.BlueprintClasses)
+                    foreach (var bp in cls)
+                    {
+                        if (bp?.Prerequisites == null || bp.Prerequisites.Length != 1 || bp.Results == null || bp.Results.Length == 0) continue;
+                        var pre = bp.Prerequisites[0];
+                        if (pre.Id.TypeId.ToString() != "MyObjectBuilder_Ore" || !seen.Add(pre.Id.SubtypeName)) continue;
+                        var o = new RefineryCalcOre { Ore = pre.Id.SubtypeName, OrePerRun = (double)(float)pre.Amount, SecondsPerRun = bp.BaseProductionTimeInSeconds };
+                        foreach (var r in bp.Results) o.Results.Add(new KeyValuePair<string, double>(r.Id.SubtypeName, (double)(float)r.Amount));
+                        if (o.OrePerRun > 0) list.Add(o);
+                    }
+            }
+            catch { }
+            calcCache[key] = list;
+            return list;
+        }
+
+        /// <summary>Wszystkie rudy, które przerabia jakakolwiek rafineria w grze (też z modów), w kolejności receptur.</summary>
+        public static List<string> AllRefineryOres()
+        {
+            var list = new List<string>();
+            try
+            {
+                foreach (var def in MyDefinitionManager.Static.GetAllDefinitions())
+                    if (def is MyRefineryDefinition rd && rd.Public)
+                        foreach (var o in CalcOres(rd))
+                            if (!list.Contains(o.Ore)) list.Add(o.Ore);
+            }
+            catch { }
+            return list;
+        }
+
+        static string RefName(MyRefineryDefinition def)
+        {
+            string name = "";
+            try { name = def.DisplayNameText ?? ""; } catch { }
+            return string.IsNullOrEmpty(name) ? def.Id.SubtypeName : name;
+        }
+
+        /// <summary>Rodzaje rafinerii (Id definicji » nazwa): na tym gridzie, a gdy brak grida — wszystkie w grze.</summary>
+        public static List<KeyValuePair<string, string>> RefineryKinds()
+        {
+            var list = new List<KeyValuePair<string, string>>();
+            var seen = new HashSet<string>();
+            try
+            {
+                var c = Collect();
+                if (c != null)
+                    foreach (var b in c.Blocks)
+                        if (b is Ing.IMyRefinery && b.BlockDefinition is MyRefineryDefinition rd && seen.Add(rd.Id.ToString()))
+                            list.Add(new KeyValuePair<string, string>(rd.Id.ToString(), RefName(rd)));
+                if (list.Count == 0)
+                    foreach (var def in MyDefinitionManager.Static.GetAllDefinitions())
+                        if (def is MyRefineryDefinition rd && rd.Public && seen.Add(rd.Id.ToString()))
+                            list.Add(new KeyValuePair<string, string>(rd.Id.ToString(), RefName(rd)));
+            }
+            catch { }
+            return list;
+        }
+
+        /// <summary>Rafinerie grida pogrupowane wg rodzaju (moduły uśrednione; jak liczy MyRefinery: prędkość i uzysk).</summary>
+        public List<RefineryCalcGroup> RefineryCalc(string filter, ICollection<string> hiddenKinds)
+        {
+            var groups = new Dictionary<string, RefineryCalcGroup>();
+            var order = new List<RefineryCalcGroup>();
+            float mult = 1f;
+            try { mult = MySession.Static.RefinerySpeedMultiplier; } catch { }
+            var src = string.IsNullOrWhiteSpace(filter) || filter.Trim() == "*" ? (IEnumerable<MyCubeBlock>)Blocks : Match(filter);
+            foreach (var b in src)
+            {
+                if (!(b is Ing.IMyRefinery) || !b.IsFunctional) continue;
+                var def = b.BlockDefinition as MyRefineryDefinition;
+                if (def == null) continue;
+                string key = def.Id.ToString();
+                if (hiddenKinds != null && hiddenKinds.Contains(key)) continue;
+                float prod = 0f, eff = 1f;
+                try
+                {
+                    if (b.UpgradeValues.TryGetValue("Productivity", out var pv)) prod = pv;
+                    if (b.UpgradeValues.TryGetValue("Effectiveness", out var ev)) eff = ev;
+                }
+                catch { }
+                double speed = (def.RefineSpeed + prod) * mult;     // MyRefinery.ProcessQueueItems
+                double yield = def.MaterialEfficiency * eff;        // MyRefinery.ChangeRequirementsToResults
+                if (!groups.TryGetValue(key, out var g))
+                {
+                    g = new RefineryCalcGroup { Name = RefName(def), DefId = key, Ores = CalcOres(def) };
+                    groups[key] = g;
+                    order.Add(g);
+                }
+                g.Count++;
+                g.SumSpeed += speed;
+                g.SumYield += yield;
+                g.SumSpeedYield += speed * yield;
+            }
+            return order;
         }
 
         // ------------------------------------------------------------------ LCD

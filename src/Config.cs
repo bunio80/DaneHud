@@ -41,6 +41,7 @@ namespace DaneHud
         Property,        // wartość opcji bloku z terminala (Prop)
         Queue,           // kolejka montażowni
         Magazyn,         // stan modułu Magazyn (zamiast Isy)
+        RefineryCalc,    // kalkulator rafinerii: ile sztabek i w jakim czasie z podanej ilości rudy
     }
 
     public enum ItemCat { Ore, Ingot, Component, Ammo, Tool, Bottle, Consumable, Other, All }
@@ -63,6 +64,8 @@ namespace DaneHud
         public bool AlignNumbers = true;  // tekst LCD: liczby po ":" do prawej
         public bool Compact = false;      // ciąg: tylko przód i góra
         public bool OnlyCargo = false;    // listy: liczyć tylko kontenery
+        public List<string> HiddenKinds = new List<string>();   // kalkulator rafinerii: ukryte rodzaje rafinerii (Id definicji)
+        public bool FromStock = false;    // kalkulator rafinerii: liczyć rudę, która jest na gridzie
         public bool FromPlugin = false;   // autocrafting: limity z Magazynu (pluginu) zamiast z LCD Isy
 
         // --- wersja 2: polecenia z Automatic LCDs 2
@@ -104,6 +107,7 @@ namespace DaneHud
                 case ElementKind.Property: e.Filter = "Connector"; e.Property = "OnOff"; break;
                 case ElementKind.Queue: e.Filter = "*"; e.MaxLines = 10; break;
                 case ElementKind.Magazyn: e.MaxLines = 5; break;
+                case ElementKind.RefineryCalc: e.Quota = 1000; e.Filter = "*"; break;
             }
             return e;
         }
@@ -114,7 +118,7 @@ namespace DaneHud
             ElementKind.Header, ElementKind.Blank, ElementKind.Items, ElementKind.CargoBar, ElementKind.Tank, ElementKind.Amount,
             ElementKind.PowerSummary, ElementKind.PowerTime, ElementKind.PowerDetails, ElementKind.PowerBalance, ElementKind.PowerUsed,
             ElementKind.Charge, ElementKind.HydrogenBalance, ElementKind.Oxygen, ElementKind.Thrust, ElementKind.Ship, ElementKind.Docked,
-            ElementKind.Refineries, ElementKind.Queue, ElementKind.Autocrafting, ElementKind.Magazyn, ElementKind.Working, ElementKind.Count, ElementKind.Damage,
+            ElementKind.Refineries, ElementKind.RefineryCalc, ElementKind.Queue, ElementKind.Autocrafting, ElementKind.Magazyn, ElementKind.Working, ElementKind.Count, ElementKind.Damage,
             ElementKind.Details, ElementKind.CustomData, ElementKind.Property, ElementKind.LcdText, ElementKind.Clock, ElementKind.Distance,
         };
 
@@ -152,6 +156,7 @@ namespace DaneHud
                 case ElementKind.Property: return L.T("Opcja bloku (Prop)", "Block property (Prop)");
                 case ElementKind.Queue: return L.T("Kolejka montażowni", "Assembler queue");
                 case ElementKind.Magazyn: return L.T("Logistyka: stan i ostatnie ruchy", "Logistics: status and recent moves");
+                case ElementKind.RefineryCalc: return L.T("Rafinerie: kalkulator (ruda » sztabki, czas)", "Refineries: calculator (ore » ingots, time)");
             }
             return k.ToString();
         }
@@ -188,6 +193,7 @@ namespace DaneHud
                 case ElementKind.LcdText: return s + ": [" + Text + "]";
                 case ElementKind.Details: return s + f + (string.IsNullOrEmpty(StartText) ? "" : " {" + StartText + "}") + (MaxLines > 0 ? " " + MaxLines : "");
                 case ElementKind.Property: return s + f + " " + Property;
+                case ElementKind.RefineryCalc: return s + ": " + (FromStock ? L.T("ruda w bazie", "ore in base") : Fmt.Mass(Quota)) + (Hidden.Count > 0 ? L.T($" (ukryte rudy {Hidden.Count})", $" ({Hidden.Count} ores hidden)") : "");
                 case ElementKind.Clock:
                 case ElementKind.Distance: return s + ": " + Text;
                 case ElementKind.CustomData:
@@ -375,6 +381,9 @@ namespace DaneHud
         public string OrePriority = "Stone, Platinum";   // te rudy najpierw (jak fixedRefiningList u Isy)
         public int IceFillPct = 50;         // ile % objętości generatora wypełnić lodem
         public double UraniumLarge = 200, UraniumSmall = 50;
+        public bool FillLevel = true;       // jak showFillLevel u Isy: „(73.4%)” w nazwach kontenerów typowych i specjalnych
+        public bool AmmoWeapons = true;     // amunicja do broni (bazy i zadokowanych statków)
+        public int AmmoFillPct = 50;        // ile % objętości broni wypełnić amunicją
         public int MovesPerSecond = 8;     // ile przeniesień na sekundę (mniej = mniejszy ruch w sieci)
         public List<Quota> Quotas = new List<Quota>();
         public List<string> AutoOrder = new List<string>();   // własna kolejność autocraftingu (puste = alfabetycznie)

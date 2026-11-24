@@ -134,6 +134,18 @@ namespace DaneHud
 
         public override string GetFriendlyName() => "DaneHudMain";
 
+        bool hiddenForLayout;
+
+        /// <summary>Na czas ustawiania położenia okna: menu znika, a gra (HUD i okna) jest widoczna pod spodem.</summary>
+        internal void HideForLayout(bool hide)
+        {
+            hiddenForLayout = hide;
+            CanHideOthers = !hide;
+            EnabledBackgroundFade = !hide;
+        }
+
+        public override bool Draw() => hiddenForLayout || base.Draw();
+
         List<WindowCfg> Wins => editing != null && cfg.Grids.Contains(editing) ? editing.Windows : cfg.Windows;
 
         WindowCfg W
@@ -266,7 +278,7 @@ namespace DaneHud
             Combo(lx + 0.15f, y, 0.27f, WindowCfg.StyleNames, win.Style, v => win.Style = v); y += row * 1.15f;
 
             int idx = sel;
-            Button(-0.335f, y, T("Położenie, rozmiar, tło...", "Position, size, background..."), () => MyGuiSandbox.AddScreen(new LayoutScreen(cfg, win, idx)), 0.205f);
+            Button(-0.335f, y, T("Położenie, rozmiar, tło...", "Position, size, background..."), () => MyGuiSandbox.AddScreen(new LayoutScreen(cfg, win, idx, this)), 0.205f);
             if (sel < WindowCfg.DefaultCount)
                 Button(-0.125f, y, T("Przywróć domyślne okno ", "Restore default window ") + (sel + 1), () =>
                 {
@@ -386,15 +398,20 @@ namespace DaneHud
         readonly WindowCfg w;
         readonly int idx;
         readonly WindowCfg backup;
+        readonly MainScreen owner;
         bool saved;
+        static bool panelTop;            // panel suwaków u góry albo u dołu ekranu (zapamiętane)
 
-        public LayoutScreen(Config cfg, WindowCfg w, int idx) : base(new Vector2(0.56f, 0.5f), 0.9f)
+        public LayoutScreen(Config cfg, WindowCfg w, int idx, MainScreen owner = null) : base(new Vector2(0.56f, 0.44f), 0.85f)
         {
             this.cfg = cfg;
             this.w = w;
             this.idx = idx;
+            this.owner = owner;
             backup = w.Clone();
             EnabledBackgroundFade = false;   // podgląd ma być dobrze widoczny
+            CanHideOthers = false;           // widać grę, HUD i pozostałe okna
+            owner?.HideForLayout(true);
             RecreateControls(true);
         }
 
@@ -402,30 +419,45 @@ namespace DaneHud
 
         public override void RecreateControls(bool constructor)
         {
+            m_position = new Vector2(0.5f, panelTop ? 0.25f : 0.75f);
             base.RecreateControls(constructor);
             AddCaption(w.Name + T(": położenie i rozmiar", ": position and size"));
-            const float x = -0.25f, sx = -0.03f, sw = 0.27f, row = 0.05f;
-            float y = -0.15f;
+            const float x = -0.25f, sx = -0.03f, sw = 0.27f, row = 0.045f;
+            float y = -0.13f;
             Label(x, y, T("Poziomo (0 lewo, 100 prawo)", "Horizontal (0 left, 100 right)")); Slider(sx, y, sw, 0, 100, w.X, "{0} %", 0, v => w.X = (float)Math.Round(v)); y += row;
             Label(x, y, T("Pionowo (0 góra, 100 dół)", "Vertical (0 top, 100 bottom)")); Slider(sx, y, sw, 0, 100, w.Y, "{0} %", 0, v => w.Y = (float)Math.Round(v)); y += row;
             Label(x, y, T("Szerokość okna", "Window width")); Slider(sx, y, sw, 8, 70, w.Width * 100f, "{0}", 0, v => w.Width = (float)Math.Round(v) / 100f); y += row;
             Label(x, y, T("Wielkość czcionki", "Font size")); Slider(sx, y, sw, 30, 130, w.Scale * 100f, "{0}", 0, v => w.Scale = (float)Math.Round(v) / 100f); y += row;
             Label(x, y, T("Odstęp wierszy", "Line spacing")); Slider(sx, y, sw, 60, 160, w.LineSpacing * 100f, "{0} %", 0, v => w.LineSpacing = (float)Math.Round(v) / 100f); y += row;
             Label(x, y, T("Tło (0 = brak)", "Background (0 = none)")); Slider(sx, y, sw, 0, 255, w.BgAlpha, "{0}", 0, v => w.BgAlpha = (int)Math.Round(v)); y += row;
-            Label(x, y + 0.01f, T("Podgląd okna jest na ekranie. Zmiany działają od razu.", "The window preview is on screen. Changes apply at once."), 0.6f);
+            Label(x, y + 0.005f, T("Okno, inne okna i HUD gry są widoczne. Zmiany działają od razu.", "The window, other windows and the game HUD are visible. Changes apply at once."), 0.6f);
 
-            Button(-0.12f, 0.2f, T("Domyślne", "Defaults"), () =>
+            Button(-0.19f, 0.175f, panelTop ? T("Panel na dół", "Panel down") : T("Panel do góry", "Panel up"), () => { panelTop = !panelTop; RecreateControls(false); }, 0.16f);
+            Button(0f, 0.175f, T("Domyślne", "Defaults"), () =>
             {
                 var d = WindowCfg.Default(idx);
                 w.X = d.X; w.Y = d.Y; w.Width = d.Width; w.Scale = d.Scale; w.LineSpacing = d.LineSpacing; w.BgAlpha = d.BgAlpha;
                 RecreateControls(false);
             });
-            Button(0.12f, 0.2f, T("Zapisz", "Save"), () => { saved = true; cfg.Save(); CloseScreen(false); });
+            Button(0.19f, 0.175f, T("Zapisz", "Save"), () => { saved = true; cfg.Save(); CloseScreen(false); }, 0.16f);
         }
 
         public override bool Draw()
         {
             if (!base.Draw()) return false;
+            try
+            {
+                // pozostałe okna na swoich miejscach, żeby dopasować do nich edytowane
+                var shown = Plugin.Shown;
+                if (shown != null)
+                    for (int i = 0; i < shown.Windows.Count && i < shown.Rows.Length; i++)
+                    {
+                        var o = shown.Windows[i];
+                        if (ReferenceEquals(o, w) || i == idx || !o.Enabled) continue;
+                        Render.Draw(o, shown.Rows[i]);
+                    }
+            }
+            catch { }
             try { Render.Draw(w, Plugin.RowsOf(w) ?? RowBuilder.Sample(w)); }
             catch { }
             return true;
@@ -433,6 +465,7 @@ namespace DaneHud
 
         protected override void OnClosed()
         {
+            owner?.HideForLayout(false);
             if (!saved)
             {
                 w.X = backup.X; w.Y = backup.Y; w.Width = backup.Width; w.Scale = backup.Scale;
@@ -749,6 +782,44 @@ namespace DaneHud
                     LinesBox(T("Ile ostatnich ruchów:", "How many recent moves:"));
                     Hint(T("Stan modułu Logistyka (/data » Logistyka) i co ostatnio przeniósł.", "Logistics module state (/data » Logistics) and its recent moves."));
                     break;
+
+                case ElementKind.RefineryCalc:
+                {
+                    C(T("Ruda, która jest w bazie (ze wszystkich bloków) + suma czasu", "Ore that is in the base (all blocks) + total time"), e.FromStock, v => { e.FromStock = v; RecreateControls(false); });
+                    if (!e.FromStock)
+                    {
+                        var amounts = new double[] { 1, 10, 100, 1000, 10000, 100000, 1000000 };
+                        var names = amounts.Select(v => Fmt.Mass(v)).ToList();
+                        int cur = Array.IndexOf(amounts, e.Quota);
+                        Label(x, y, T("Ilość rudy:", "Ore amount:")); Combo(vx, y, 0.14f, names, cur < 0 ? 3 : cur, v => { e.Quota = amounts[v]; RecreateControls(false); });
+                        Number(vx + 0.16f, y, 0.12f, e.Quota, v => e.Quota = Math.Max(0, v)); y += row;
+                    }
+                    LinesBox(T("Ile rud (0 = wszystkie):", "How many ores (0 = all):"));
+
+                    Label(x, y, T("Pokazywane rafinerie:", "Refineries shown:")); y += row * 0.9f;
+                    var kinds = Ctx.RefineryKinds();
+                    for (int k = 0; k < kinds.Count; k++)
+                    {
+                        string id = kinds[k].Key;
+                        Check(x + (k % 2) * 0.3f, y, kinds[k].Value, !e.HiddenKinds.Contains(id), v => { e.HiddenKinds.Remove(id); if (!v) e.HiddenKinds.Add(id); });
+                        if (k % 2 == 1 || k == kinds.Count - 1) y += row * 0.85f;
+                    }
+                    if (kinds.Count == 0) { Hint(T("Brak rafinerii.", "No refineries.")); }
+
+                    Label(x, y, T("Pokazywane rudy:", "Ores shown:")); y += row * 0.9f;
+                    var ores = Ctx.AllRefineryOres();
+                    for (int k = 0; k < ores.Count; k++)
+                    {
+                        string ore = ores[k];
+                        Check(x + (k % 4) * 0.15f, y, Fmt.Symbol(ore) + "  " + ore, !e.Hidden.Contains(ore), v => { e.Hidden.Remove(ore); if (!v) e.Hidden.Add(ore); });
+                        if (k % 4 == 3 || k == ores.Count - 1) y += row * 0.85f;
+                    }
+                    Button(x + 0.09f, y + 0.005f, T("Wszystkie", "All"), () => { e.Hidden.Clear(); RecreateControls(false); }, 0.16f, 0.036f);
+                    Button(x + 0.27f, y + 0.005f, T("Żadna", "None"), () => { e.Hidden.Clear(); e.Hidden.AddRange(ores); RecreateControls(false); }, 0.16f, 0.036f);
+                    y += row;
+                    Hint(T("Kolumny: sztabki i czas dla 1 rafinerii i dla wszystkich danego rodzaju razem.", "Columns: ingots and time for 1 refinery and for all of that kind together."));
+                    break;
+                }
 
                 case ElementKind.Queue:
                     FilterBox(T("Montażownie:", "Assemblers:"));
