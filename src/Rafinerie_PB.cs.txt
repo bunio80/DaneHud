@@ -196,14 +196,15 @@ void Reactors()
         double target = r.CubeGrid.GridSizeEnum == MyCubeSize.Large ? uLarge : uSmall;
         if (target <= 0) continue;
         double have = (double)inv.GetItemAmount(fuel);
-        if (have > target + 0.05)
+        double tol = Math.Max(0.05, target * 0.01);
+        if (have > target + tol)
         {
             var it = inv.FindItem(fuel);
             if (it.HasValue)
                 foreach (var c in ingots)
                     if (HasSpace(c.GetInventory(0)) && Move(inv, it.Value, c.GetInventory(0), have - target) > 0) break;
         }
-        else if (have < target - 0.05)
+        else if (have < target - tol)
         {
             double need = target - have;
             foreach (var c in ingots.Concat(cargo))

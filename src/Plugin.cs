@@ -23,7 +23,7 @@ namespace DaneHud
 
     public class Plugin : IPlugin
     {
-        internal const string Version = "23";
+        internal const string Version = "30";
         internal static Config Cfg;
         internal static volatile Snapshot Shown;      // okna i wiersze do narysowania (null = nic)
         internal static bool Seated;
@@ -35,11 +35,15 @@ namespace DaneHud
 
         static readonly ConcurrentQueue<Action> mainThread = new ConcurrentQueue<Action>();
         IMySession hooked;
+        IMyUtilities hookedUtil;   // v26: wypisujemy się z tego samego obiektu, do którego się zapisaliśmy
         Overlay overlay;
         int tick;
 
         public void Init(object gameInstance)
         {
+            // v30: MySession.OnUnloading odpala się na początku rozładowania świata, gdy bloki jeszcze istnieją
+            // (wcześniej Release() szło dopiero z Update po rozładowaniu i konwejery zostawały wyłączone na serwerze)
+            try { Sandbox.Game.World.MySession.OnUnloading += OnSessionUnloading; } catch (Exception e) { Log("OnUnloading: " + e); }
             Cfg = Config.Load();
             VirtualTerminal.Apply();
             MyLog.Default.WriteLine("DaneHud v" + Version + " loaded");
@@ -47,10 +51,21 @@ namespace DaneHud
 
         public void OpenConfigDialog()
         {
+            if (MainScreen.Open != null && MainScreen.Open.State != MyGuiScreenState.CLOSED && MainScreen.Open.State != MyGuiScreenState.CLOSING) return;   // v26: tylko jedno menu naraz
             MyGuiSandbox.AddScreen(new MainScreen(Cfg ?? (Cfg = Config.Load())));
         }
 
-        public void Dispose() { Magazyn.I.Release(); Unhook(); }
+        static void OnSessionUnloading()
+        {
+            try { Magazyn.I.Release(); } catch (Exception e) { Log("unload release: " + e); }
+        }
+
+        public void Dispose()
+        {
+            try { Sandbox.Game.World.MySession.OnUnloading -= OnSessionUnloading; } catch { }
+            Magazyn.I.Release();
+            Unhook();
+        }
 
         public void Update()
         {
@@ -66,7 +81,10 @@ namespace DaneHud
             if (!ReferenceEquals(s, hooked))
             {
                 Unhook();
+                // v26: po ponownym połączeniu (kick/SeamlessClient) stara subskrypcja zostawała — /data otwierał 6 okien
+                MyAPIGateway.Utilities.MessageEntered -= OnMessage;
                 MyAPIGateway.Utilities.MessageEntered += OnMessage;
+                hookedUtil = MyAPIGateway.Utilities;
                 hooked = s;
                 try { overlay = new Overlay(); MyGuiSandbox.AddScreen(overlay); } catch (Exception e) { Log("overlay: " + e); overlay = null; }
             }
@@ -149,8 +167,9 @@ namespace DaneHud
             Shown = null;
             try { overlay?.CloseScreenNow(false); } catch { }
             overlay = null;
-            if (hooked != null && MyAPIGateway.Utilities != null)
-                MyAPIGateway.Utilities.MessageEntered -= OnMessage;
+            try { if (hookedUtil != null) hookedUtil.MessageEntered -= OnMessage; } catch { }
+            try { if (MyAPIGateway.Utilities != null) MyAPIGateway.Utilities.MessageEntered -= OnMessage; } catch { }
+            hookedUtil = null;
             hooked = null;
         }
 
@@ -196,7 +215,7 @@ namespace DaneHud
             try
             {
                 MyLog.Default.WriteLine("DaneHud: " + msg);
-                var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SpaceEngineers", "Plugins", "DaneHud.log");
+                var path = Path.Combine(Config.PluginsDir, "DaneHud.log");
                 File.AppendAllText(path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + msg + Environment.NewLine);
             }
             catch { }

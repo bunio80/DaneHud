@@ -1,4 +1,5 @@
 using System;
+using Sandbox.Game.World;
 using System.Collections.Generic;
 using System.Linq;
 using Sandbox.Definitions;
@@ -115,11 +116,18 @@ namespace DaneHud
         public string PrimaryOre = "";
 
         /// <summary>Działający PB z naszym skryptem rafinerii (znacznik w CustomData).</summary>
+        /// <summary>Czy gracz ma dostęp do bloku (jak w terminalu). Bloki bez terminala — tak.</summary>
+        internal static bool Access(MyCubeBlock b)
+        {
+            long me = Sandbox.ModAPI.MyAPIGateway.Session?.Player?.IdentityId ?? 0;
+            try { return me == 0 || !(b is Sandbox.ModAPI.IMyTerminalBlock tb) || tb.HasPlayerAccess(me); } catch { return true; }
+        }
+
         internal static Ing.IMyProgrammableBlock RefineryScript(Ctx c)
         {
             if (c == null) return null;
             foreach (var b in c.Blocks)
-                if (b is Ing.IMyProgrammableBlock pb && b.IsFunctional && pb.Enabled && (pb.CustomData ?? "").Contains(ScriptTag)) return pb;
+                if (Access(b) && b is Ing.IMyProgrammableBlock pb && b.IsFunctional && pb.Enabled && (pb.CustomData ?? "").Contains(ScriptTag)) return pb;
             return null;
         }
 
@@ -146,7 +154,7 @@ namespace DaneHud
         internal static string InstallScript(Ctx c, MagazynCfg m)
         {
             if (c == null) return T("Usiądź w gridzie bazy.", "Sit in the base grid.");
-            var pbs = c.Blocks.OfType<Sandbox.ModAPI.IMyProgrammableBlock>().Where(p => ((MyCubeBlock)p).IsFunctional).ToList();
+            var pbs = c.Blocks.Where(Access).OfType<Sandbox.ModAPI.IMyProgrammableBlock>().Where(p => ((MyCubeBlock)p).IsFunctional).ToList();
             var pb = pbs.FirstOrDefault(p => (p.CustomData ?? "").Contains(ScriptTag))
                   ?? pbs.FirstOrDefault(p => (p.CustomName ?? "").IndexOf("Rafinerie", StringComparison.OrdinalIgnoreCase) >= 0
                                           || (p.CustomName ?? "").IndexOf("Refiner", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -454,6 +462,7 @@ namespace DaneHud
 
                 foreach (var b in c.Blocks.OrderBy(Ctx.NameOf, StringComparer.OrdinalIgnoreCase))
                 {
+                    if (!Access(b)) continue;   // v30: jak terminal — bloki bez dostępu (wspólna baza, frakcja) pomijane
                     if (b is Ing.IMyGasTank tank && b.IsFunctional && !IsLocked(Ctx.NameOf(b)) && b.InventoryCount > 0)
                     {
                         Tanks.Add(b);
@@ -658,7 +667,7 @@ namespace DaneHud
                 if (!((IngInv.IMyInventory)src).CanTransferItemTo(dst, ItemType(id)))
                 {
                     // gra (i serwer) nie pozwala przenosić między blokami bez połączenia konwejerem
-                    Unreachable.Add(Ctx.NameOf((MyCubeBlock)src.Entity));
+                    Unreachable.Add(Ctx.NameOf((MyCubeBlock)src.Entity) + " » " + Ctx.NameOf((MyCubeBlock)dst.Entity));
                     cooldown[key] = DateTime.UtcNow.AddSeconds(30);
                     return 0;
                 }
@@ -963,7 +972,8 @@ namespace DaneHud
                 double target = r.CubeGrid.GridSizeEnum == MyCubeSize.Large ? m.UraniumLarge : m.UraniumSmall;
                 if (target <= 0) continue;
                 double have = (double)inv.GetItemAmount(fuel);
-                if (have > target + 0.05)
+                double tol = Math.Max(0.05, target * 0.01);
+                if (have > target + tol)
                 {
                     // nadmiar do kontenera sztabek (bazy)
                     var dst = w.Storage(ItemCat.Ingot).FirstOrDefault(x => x.Fill < 0.99);
@@ -975,7 +985,7 @@ namespace DaneHud
                             Move(inv, item, dst.I, ex, T("nadmiar paliwa reaktora", "reactor fuel excess"));
                         }
                 }
-                else if (have < target - 0.05)
+                else if (have < target - tol)
                     Fill(w.Storage(ItemCat.Ingot), inv, fuel, target - have, T("paliwo reaktora", "reactor fuel"));
                 have = (double)inv.GetItemAmount(fuel);
                 sumHave += have; sumTarget += target;
@@ -1087,6 +1097,35 @@ namespace DaneHud
 
         // ------------------------------------------------------------------ autocrafting
 
+        static readonly Dictionary<string, HashSet<string>> asmMakes = new Dictionary<string, HashSet<string>>();
+
+        /// <summary>Przedmioty (Id), które da się zrobić w montażowniach tego grida — z klas receptur ich definicji.</summary>
+        internal static HashSet<string> Craftable(Ctx c)
+        {
+            var all = new HashSet<string>();
+            if (c == null) return all;
+            foreach (var b in c.Blocks)
+            {
+                if (!(b is Ing.IMyAssembler) || !(b.BlockDefinition is MyAssemblerDefinition ad)) continue;
+                string key = ad.Id.ToString();
+                if (!asmMakes.TryGetValue(key, out var set))
+                {
+                    set = new HashSet<string>();
+                    try
+                    {
+                        foreach (var cls in ad.BlueprintClasses)
+                            foreach (var bp in cls)
+                                if (bp?.Results != null)
+                                    foreach (var r in bp.Results) set.Add(r.Id.ToString());
+                    }
+                    catch { }
+                    asmMakes[key] = set;
+                }
+                all.UnionWith(set);
+            }
+            return all;
+        }
+
         internal static MyBlueprintDefinitionBase BlueprintFor(MyDefinitionId item)
         {
             try { if (MyDefinitionManager.Static.TryGetBlueprintDefinitionByResultId(item, out var bp)) return bp; } catch { }
@@ -1141,6 +1180,7 @@ namespace DaneHud
         /// <summary>Przedmioty, które plugin sam wrzucił do kolejki (jak stan „[A:” u Isy) — tylko te zdejmuje, gdy jest ich dość.</summary>
         readonly HashSet<string> crafting = new HashSet<string>();
         public string AsmWarning = "";
+        readonly Dictionary<long, KeyValuePair<double, DateTime>> asmProgress = new Dictionary<long, KeyValuePair<double, DateTime>>();
 
         /// <summary>
         /// Autocrafting według tych samych zasad co Isy's Inventory Manager (własna implementacja):
@@ -1164,19 +1204,46 @@ namespace DaneHud
             var inQueue = new Dictionary<MyDefinitionId, double>();
             var q = new List<Ing.MyProductionItem>();
             var idle = new List<string>();
+            var missing = new HashSet<string>();
             foreach (var asm in asms)
             {
                 q.Clear();
                 try { asm.GetQueue(q); } catch { continue; }
-                if (q.Count > 0 && !asm.IsProducing && asm.Mode == Ing.MyAssemblerMode.Assembly) idle.Add(asm.CustomName);
+                double qsum = 0;
                 foreach (var it in q)
                 {
                     inQueue.TryGetValue(it.BlueprintId, out var v);
                     inQueue[it.BlueprintId] = v + (double)it.Amount;
+                    qsum += (double)it.Amount;
+                }
+                long aid = ((MyCubeBlock)asm).EntityId;
+                if (q.Count == 0 || asm.Mode != Ing.MyAssemblerMode.Assembly || !asm.Enabled) { asmProgress.Remove(aid); continue; }
+                // stoi = suma kolejki nie zmalała od 90 s (dokładanie przez autocrafting nie resetuje licznika)
+                if (!asmProgress.TryGetValue(aid, out var pr) || qsum < pr.Key - 1e-6) asmProgress[aid] = new KeyValuePair<double, DateTime>(qsum, now);
+                else
+                {
+                    asmProgress[aid] = new KeyValuePair<double, DateTime>(qsum, pr.Value);
+                    if ((now - pr.Value).TotalSeconds > 90)
+                    {
+                        idle.Add(asm.CustomName);
+                        try
+                        {
+                            var bp = MyDefinitionManager.Static.GetBlueprintDefinition(q[0].BlueprintId);
+                            float eff = 1f;
+                            try { eff = Math.Max(1f, MySession.Static.AssemblerEfficiencyMultiplier); } catch { }
+                            if (bp?.Prerequisites != null)
+                                foreach (var pre in bp.Prerequisites)
+                                    if (stock(pre.Id) < (double)pre.Amount / eff) missing.Add(Ctx.ItemName(pre.Id));
+                        }
+                        catch { }
+                    }
                 }
             }
             if (idle.Count > 0)
-                AsmWarning = T("Kolejka stoi (brak sztabek?): ", "Queue not moving (no ingots?): ") + string.Join(", ", idle.Take(3)) + (idle.Count > 3 ? " ..." : "");
+                AsmWarning = (missing.Count > 0
+                        ? T("Kolejka stoi, brak: ", "Queue not moving, missing: ") + string.Join(", ", missing.Take(4)) + "  » "
+                        : T("Kolejka stoi (brak sztabek?): ", "Queue not moving (no ingots?): "))
+                    + string.Join(", ", idle.Take(3)) + (idle.Count > 3 ? " ..." : "");
 
             // każdy limit
             QueuedNow.Clear();

@@ -14,20 +14,16 @@ A [Pulsar](https://github.com/SpaceGT/Pulsar) plugin for Space Engineers (Legacy
 
 ### What it does
 
-Grid HUD & Logistics shows windows with live data about the grid you are sitting in: power, cargo, ores, ingots,
-refineries, autocrafting, block details and more. They are drawn directly on the HUD, so you don't need
-LCD panels, a script or a mod for them. It has two parts.
+Grid HUD & Logistics shows windows with live data about the grid you are sitting in. They are drawn directly
+on the HUD, so you don't need LCD panels, a script or a mod for them. It has two parts: **HUD windows** and **Logistics**.
 
-**1. HUD windows.** This part replaces Automatic LCDs 2 + HudLcd.
+### 1. HUD windows
+
+This part replaces Automatic LCDs 2 + HudLcd.
+
+**Windows**
 - Any number of windows. You set position, size, background, colours and text style for each one.
   Text styles: normal, bold, extra bold, outline and shadow.
-- Elements familiar from Automatic LCDs 2: inventory lists with bars, power and batteries, H2/O2, cargo fill,
-  refineries, assembler queue, damage, working blocks, and `Details` of any block.
-  `Details` can pick lines by text, for example a shield's `CapHp:`.
-- **Refinery calculator:** for each refinery type (modded and tiered ones too) it shows how many ingots
-  you get from a chosen amount of ore and how long it takes, for one refinery and for all of that type
-  together, including speed and yield modules. It can also use the ore you have in the base and add up the total time.
-  You pick the refinery types and ores with checkboxes.
 - **Window placement with a live view:** while you move or resize a window, the game, its HUD and your
   other windows stay visible.
 - **Per-grid profiles.** Your base, your miner and your ship each get their own windows. The right set appears
@@ -35,7 +31,46 @@ LCD panels, a script or a mod for them. It has two parts.
 - **Named templates** of window sets, which you can load into any grid.
 - Polish and English.
 
-**2. Logistics.** This part takes over the work of a typical inventory script. It runs inside the plugin while you sit in the grid.
+**Elements from Automatic LCDs 2**
+
+Most elements work like the well-known Automatic LCDs 2 commands, with the same block filters
+(text in the name, `G:group`, `Type:kind`, `*`):
+text and headers, inventory lists with bars and minimums, cargo fill, H2/O2 tanks, power and battery time,
+power sources, jump drive and battery charge, oxygen, block contents (ammo, uranium, ice), power used,
+working blocks, block counts, damage, docked grids, assembler queue, ship data (speed, altitude, gravity, mass),
+clock, distance to a GPS, any terminal property, `Details` and Custom Data of any block, and the text of any LCD.
+`Details` can pick lines by text, for example a shield's `CapHp:`.
+
+**Our own elements**
+- **Production calculator.** Takes what autocrafting is missing (limit minus stock) and works out:
+  - how many ingots of each kind it needs. Components made from other components are broken down
+    all the way to ingots, and the server's assembler efficiency is included;
+  - how many of those ingots are **missing** after the ingots already in the base;
+  - how much **ore** you must refine for the missing ingots;
+  - how long your refineries need for it, all refineries that can refine that ore working together,
+    with their speed and yield modules, plus the total time.
+
+  A red row means there isn't enough of that ore in the base. You can count every missing item or only the ones
+  you name, for example `Steel, Thruster`. The list comes from the plugin's autocrafting limits or from an
+  autocrafting LCD of an inventory script.
+- **Refinery calculator.** For each refinery type (modded and tiered ones too) it shows how many ingots
+  you get from a chosen amount of ore and how long it takes, for one refinery and for all of that type
+  together, including speed and yield modules. It can also use the ore you have in the base and add up the total time.
+  You pick the refinery types and ores with checkboxes.
+- **Refineries in one line:** how many refineries, how long until they finish, and the ores in the order they are refined.
+- **Autocrafting on the HUD:** stock and limit of every item (from the plugin's limits or from an inventory script's LCD).
+  It shows only items your assemblers can make, can show only what is missing, and can be split across windows.
+- **Logistics status:** what Logistics is doing, its last moves and warnings: an assembler queue that is stuck
+  (with the ingots it is waiting for), and blocks without a conveyor link (shown as `from » to`).
+- **Power vs. thrusters:** power output against what ion and atmospheric thrusters draw.
+- **Hydrogen balance:** H2 production against what hydrogen thrusters burn.
+- **Thrust:** thrust, acceleration and lift in every direction for the current mass.
+
+All amounts use the same units as the item lists (`13.3 k`, `1.2 M`).
+
+### 2. Logistics
+
+This part takes over the work of a typical inventory script. It runs inside the plugin while you sit in the grid.
 - **Sorting** into containers named `Ores`, `Ingots`, `Components`, `Tools`, `Ammo` or `Bottles`.
   It also empties assembler outputs, cockpits, connectors and idle assemblers.
 - **Fill level** in the names of sorted and special containers, for example `Ores (73.4%)`.
@@ -84,13 +119,16 @@ and `/data pl` and `/data en` switch the language.
 - Logistics runs **while you sit in the grid**. It moves items the way a player does in the terminal. The server
   still checks ownership and conveyor connections, and blocks without a conveyor link are listed on the HUD.
 - If another inventory script (PB) is running on the grid, Logistics waits and shows a warning, so the two don't fight.
-- Settings are stored in `%AppData%\SpaceEngineers\Plugins\DaneHud.xml`.
+- While Logistics runs, refineries and managed reactors don't pull from conveyors themselves. They do again when you stand up or leave the world. After a game crash or a lost connection they stay that way until you next sit in that grid and stand up.
+- Logistics only touches blocks you can access in the terminal.
+- Settings are stored in `Plugins\DaneHud.xml` in the game's data folder (by default `%AppData%\SpaceEngineers`).
 
 ### Credits
 
+The HUD elements follow the commands players know from **Automatic LCDs 2**.
 The logistics logic follows the behaviour that players know from **Isy's Inventory Manager**:
 the container keywords, the special container format and the refinery and autocrafting rules.
-Grid HUD & Logistics is a separate, independent implementation. It is not affiliated with Isy's script and contains no code from it.
+Grid HUD & Logistics is a separate, independent implementation. It is not affiliated with either script and contains no code from them.
 
 ### License
 
@@ -102,26 +140,61 @@ MIT, see [LICENSE](LICENSE).
 
 ### Co robi
 
-Grid HUD & Logistics pokazuje na HUD okna z danymi grida, w którym siedzisz: prąd, ładownie, rudy, sztabki,
-rafinerie, autocrafting, szczegóły bloków i więcej. Okna są rysowane prosto na HUD, więc nie potrzebujesz
-do nich paneli LCD, skryptu ani moda. Plugin ma dwie części.
+Grid HUD & Logistics pokazuje na HUD okna z danymi grida, w którym siedzisz. Okna są rysowane prosto na HUD,
+więc nie potrzebujesz do nich paneli LCD, skryptu ani moda. Plugin ma dwie części: **okna na HUD** i **Logistykę**.
 
-**1. Okna na HUD.** Ta część zastępuje Automatic LCDs 2 + HudLcd.
+### 1. Okna na HUD
+
+Ta część zastępuje Automatic LCDs 2 + HudLcd.
+
+**Okna**
 - Dowolna liczba okien. Każdemu ustawiasz położenie, rozmiar, tło, kolory i styl tekstu.
   Style tekstu: zwykły, pogrubiony, bardzo gruby, obrys i cień.
-- Elementy znane z Automatic LCDs 2: listy przedmiotów z paskami, prąd i baterie, H2/O2, zapełnienie ładowni,
-  rafinerie, kolejka montażowni, uszkodzenia, działające bloki i `Details` dowolnego bloku.
-  `Details` potrafi wybrać linie po tekście, np. `CapHp:` tarczy.
-- **Kalkulator rafinerii:** dla każdego rodzaju rafinerii (także z modów i tierów) pokazuje, ile sztabek
-  wyjdzie z wybranej ilości rudy i w jakim czasie, dla jednej rafinerii i dla wszystkich tego rodzaju razem,
-  z modułami prędkości i uzysku. Może też policzyć rudę, którą masz w bazie, i podać łączny czas.
-  Rodzaje rafinerii i rudy wybierasz checkboxami.
 - **Ustawianie okna z podglądem:** gdy przesuwasz albo zmieniasz rozmiar okna, widać grę, jej HUD i pozostałe okna.
 - **Profile gridów.** Baza, koparka i statek mają osobne okna. Właściwy zestaw pojawia się, gdy siadasz.
 - **Nazwane szablony** zestawów okien, które wczytasz do dowolnego grida.
 - Język polski i angielski.
 
-**2. Logistyka.** Ta część przejmuje pracę typowego skryptu magazynowego. Działa w pluginie, gdy siedzisz w gridzie.
+**Elementy z Automatic LCDs 2**
+
+Większość elementów działa jak znane polecenia Automatic LCDs 2, z tymi samymi filtrami bloków
+(tekst w nazwie, `G:grupa`, `Typ:rodzaj`, `*`):
+tekst i nagłówki, listy przedmiotów z paskami i minimum, zapełnienie ładowni, zbiorniki H2/O2, prąd i czas baterii,
+źródła prądu, naładowanie napędów skokowych i baterii, tlen, zawartość bloków (amunicja, uran, lód), pobór prądu,
+stan bloków, liczba bloków, uszkodzenia, zadokowane gridy, kolejka montażowni, dane statku (prędkość, wysokość,
+grawitacja, masa), zegar, odległość do punktu GPS, dowolna opcja z terminala, `Details` i Custom Data dowolnego bloku
+oraz tekst dowolnego LCD. `Details` potrafi wybrać linie po tekście, np. `CapHp:` tarczy.
+
+**Nasze własne elementy**
+- **Kalkulator produkcji.** Bierze to, czego brakuje w autocraftingu (limit minus stan), i liczy:
+  - ile sztabek każdego rodzaju trzeba. Części robione z innych części rozpisuje aż do sztabek,
+    z uwzględnieniem mnożnika montażowni serwera;
+  - ilu z tych sztabek **brakuje** po odjęciu sztabek, które już są w bazie;
+  - ile **rudy** trzeba przetopić na brakujące sztabki;
+  - ile czasu zajmie to Twoim rafineriom: wszystkim, które przerabiają tę rudę, razem, z ich modułami
+    prędkości i uzysku, plus łączny czas.
+
+  Czerwony wiersz oznacza, że tej rudy jest w bazie za mało. Możesz liczyć wszystkie braki albo tylko wybrane
+  przedmioty, np. `Steel, Thruster`. Lista pochodzi z limitów autocraftingu w pluginie albo z LCD autocraftingu
+  skryptu magazynowego.
+- **Kalkulator rafinerii.** Dla każdego rodzaju rafinerii (także z modów i tierów) pokazuje, ile sztabek
+  wyjdzie z wybranej ilości rudy i w jakim czasie, dla jednej rafinerii i dla wszystkich tego rodzaju razem,
+  z modułami prędkości i uzysku. Może też policzyć rudę, którą masz w bazie, i podać łączny czas.
+  Rodzaje rafinerii i rudy wybierasz checkboxami.
+- **Rafinerie w jednej linii:** ile rafinerii, ile czasu do końca i rudy w kolejności przetapiania.
+- **Autocrafting na HUD:** stan i limit każdego przedmiotu (z limitów pluginu albo z LCD skryptu magazynowego).
+  Pokazuje tylko to, co potrafią zrobić Twoje montażownie, może pokazywać same braki i dzielić listę na kilka okien.
+- **Stan Logistyki:** co robi Logistyka, ostatnie ruchy i ostrzeżenia: kolejka montażowni, która stoi
+  (z brakującymi sztabkami), i bloki bez połączenia konwejerem (w postaci `skąd » dokąd`).
+- **Prąd kontra silniki:** produkcja prądu wobec poboru silników jonowych i atmosferycznych.
+- **Bilans wodoru:** produkcja H2 wobec zużycia silników wodorowych.
+- **Ciąg:** ciąg, przyspieszenie i udźwig w każdą stronę przy obecnej masie.
+
+Wszystkie ilości są w tych samych jednostkach co listy przedmiotów (`13.3 k`, `1.2 M`).
+
+### 2. Logistyka
+
+Ta część przejmuje pracę typowego skryptu magazynowego. Działa w pluginie, gdy siedzisz w gridzie.
 - **Sortowanie** do kontenerów z nazwą `Ores`, `Ingots`, `Components`, `Tools`, `Ammo` albo `Bottles`.
   Opróżnia też wyjścia montażowni, kokpity, konektory i stojące montażownie.
 - **Zapełnienie w nazwach** kontenerów sortowanych i specjalnych, np. `Ores (73.4%)`.
@@ -166,13 +239,16 @@ a `/data pl` i `/data en` zmieniają język.
 - Logistyka działa, **gdy siedzisz w gridzie**. Przenosi przedmioty tak, jak gracz w terminalu. Serwer dalej
   sprawdza własność i połączenie konwejerem, a bloki bez połączenia są wypisane na HUD.
 - Jeśli na gridzie działa inny skrypt magazynowy (PB), Logistyka czeka i pokazuje ostrzeżenie, żeby się nie kłóciły.
-- Ustawienia są zapisane w `%AppData%\SpaceEngineers\Plugins\DaneHud.xml`.
+- Gdy Logistyka działa, rafinerie i obsługiwane reaktory nie pobierają same z konwejera. Pobierają znowu, gdy wstaniesz albo wyjdziesz ze świata. Po crashu gry albo zerwanym połączeniu zostają tak do następnego usiądnięcia w tym gridzie i wstania.
+- Logistyka rusza tylko bloki, do których masz dostęp w terminalu.
+- Ustawienia są zapisane w `Plugins\DaneHud.xml` w folderze danych gry (domyślnie `%AppData%\SpaceEngineers`).
 
 ### Podziękowania
 
-Logistyka działa według reguł znanych graczom z **Isy's Inventory Manager**: słowa w nazwach kontenerów,
+Elementy HUD działają według poleceń znanych graczom z **Automatic LCDs 2**.
+Logistyka działa według reguł znanych z **Isy's Inventory Manager**: słowa w nazwach kontenerów,
 format kontenerów specjalnych oraz zasady dla rafinerii i autocraftingu.
-Grid HUD & Logistics to osobna, niezależna implementacja. Nie jest związany ze skryptem Isy i nie zawiera jego kodu.
+Grid HUD & Logistics to osobna, niezależna implementacja. Nie jest związany z żadnym z tych skryptów i nie zawiera ich kodu.
 
 ### Licencja
 

@@ -110,6 +110,7 @@ namespace DaneHud
                 case ElementKind.Queue: Queue(e, c); break;
                 case ElementKind.Magazyn: MagazynState(e); break;
                 case ElementKind.RefineryCalc: RefineryCalc(e, c); break;
+                case ElementKind.ProductionCalc: ProductionCalc(e, c); break;
             }
         }
 
@@ -216,7 +217,7 @@ namespace DaneHud
             }
             if (p.Reactors > 0)
             {
-                string fuel = Fmt.Mass(p.UraniumKg);
+                string fuel = Fmt.Amount(p.UraniumKg);
                 if (p.ReactorFuelRate > 1e-9) Pair(T("Paliwo reaktorów:", "Reactor fuel:"), fuel + " = " + Fmt.Time(p.UraniumKg / p.ReactorFuelRate));
                 else Pair(T("Paliwo reaktorów:", "Reactor fuel:"), fuel);
             }
@@ -503,7 +504,7 @@ namespace DaneHud
                 bool many = g.Count > 1;
                 // nazwa bloku (też z modów), średnia prędkość i uzysk z modułami
                 Pair(g.Name, "x" + g.Speed.ToString("0.##", CultureInfo.InvariantCulture) + "  " + Math.Round(g.Yield * 100) + "%", title);
-                string head = e.FromStock ? T("Ruda w bazie", "Ore in base") : Fmt.Mass(fixedOre);
+                string head = e.FromStock ? T("Ruda w bazie", "Ore in base") : Fmt.Amount(fixedOre);
                 if (many) ColsW(firstW, text, title, head, "1x", g.Count + "x");
                 else ColsW(firstW, text, title, head, "1x");
                 double sumOne = 0, sumAll = 0;
@@ -525,7 +526,7 @@ namespace DaneHud
                     shown++;
                     if (e.MaxLines > 0 && lines >= e.MaxLines) continue;
                     lines++;
-                    string label = Fmt.Symbol(o.Ore) + (stock != null ? "  " + Fmt.Mass(ore) : "");
+                    string label = Fmt.Symbol(o.Ore) + (stock != null ? "  " + Fmt.Amount(ore) : "");
                     string one = Ingots(o, runs, g.Yield) + " " + CalcTime(tOne);
                     if (many) ColsW(firstW, text, value, label, one, Ingots(o, runs, g.AllYield) + " " + CalcTime(tAll));
                     else ColsW(firstW, text, value, label, one);
@@ -540,10 +541,193 @@ namespace DaneHud
             }
         }
 
+        // ------------------------------------------------------------------ kalkulator produkcji (v27)
+
+        /// <summary>
+        /// Braki z autocraftingu (limit - stan) rozpisane na sztabki (receptury montażowni, rekurencyjnie dla części z części),
+        /// z tego brakujące sztabki (minus to, co jest w bazie), ruda potrzebna na nie i czas przy obecnych rafineriach
+        /// (prędkość i uzysk z modułami, jak w kalkulatorze rafinerii).
+        /// </summary>
+        void ProductionCalc(ElementCfg e, Ctx c)
+        {
+            var items = c.Items(false);
+            var wants = ProductionWants(e, c, items);
+            if (wants == null) { Text(T("Brak listy autocraftingu (Logistyka albo LCD Isy)", "No autocrafting list (Logistics or Isy LCD)"), warn); return; }
+            var todo = wants.Where(w => w.Wanted > w.Current).ToList();
+            if (todo.Count == 0) { Text(T("Autocrafting: wszystko jest", "Autocrafting: nothing missing"), value); return; }
+
+            float asmEff = 1f;
+            try { asmEff = Math.Max(1f, Sandbox.Game.World.MySession.Static.AssemblerEfficiencyMultiplier); } catch { }
+            var ingots = new Dictionary<string, double>();     // podtyp sztabki » kg
+            var rawOre = new Dictionary<string, double>();     // receptury biorące rudę wprost
+            var noRecipe = new HashSet<string>();
+            int lines = 0;
+            foreach (var w in todo)
+            {
+                double missing = w.Wanted - w.Current;
+                Expand(w.Id, missing, asmEff, ingots, rawOre, noRecipe, 0);
+                if (e.Each && (e.MaxLines <= 0 || lines < e.MaxLines))
+                {
+                    lines++;
+                    Pair(w.Name + ":", Fmt.Amount(w.Current) + " / " + Fmt.Amount(w.Wanted) + "   -" + Fmt.Amount(missing), value);
+                }
+            }
+            if (e.Each && e.MaxLines > 0 && todo.Count > e.MaxLines)
+                Text(T($"  ... i jeszcze {todo.Count - e.MaxLines}", $"  ... and {todo.Count - e.MaxLines} more"), text);
+
+            var groups = c.RefineryCalc("*", e.HiddenKinds);
+            ColsW(0.16f, text, title, T("Sztabka", "Ingot"), T("Potrzeba", "Needed"), T("Brak", "Missing"), T("Ruda", "Ore"), T("Czas", "Time"));
+            double total = 0;
+            bool anyUnknown = false;
+            foreach (var kv in ingots.OrderByDescending(x => x.Value))
+            {
+                items.TryGetValue("MyObjectBuilder_Ingot/" + kv.Key, out var haveIa);
+                double have = haveIa?.Amount ?? 0;
+                double shortIng = Math.Max(0, kv.Value - have);
+                string oreTxt = "-", timeTxt = "-";
+                var color = value;
+                if (shortIng > 0)
+                {
+                    if (OreFor(kv.Key, groups, out var o, out double res, out double sumSpeed, out double yield))
+                    {
+                        double runs = shortIng / (res * yield);
+                        double ore = runs * o.OrePerRun;
+                        double t = sumSpeed > 0 ? runs * o.SecondsPerRun / sumSpeed : double.PositiveInfinity;
+                        total += t;
+                        items.TryGetValue("MyObjectBuilder_Ore/" + o.Ore, out var oreIa);
+                        double oreHave = oreIa?.Amount ?? 0;
+                        oreTxt = (o.Ore != kv.Key ? Fmt.Symbol(o.Ore) + " " : "") + Fmt.Amount(ore);
+                        timeTxt = CalcTime(t);
+                        if (oreHave < ore) color = warn;            // za mało rudy w bazie
+                    }
+                    else { oreTxt = "?"; timeTxt = "?"; color = warn; anyUnknown = true; }
+                }
+                ColsW(0.16f, text, color, Fmt.Symbol(kv.Key), Fmt.Amount(kv.Value), shortIng > 0 ? Fmt.Amount(shortIng) : "0", oreTxt, timeTxt);
+            }
+            foreach (var kv in rawOre)
+                ColsW(0.16f, text, value, Fmt.Symbol(kv.Key), T("ruda", "ore"), "", Fmt.Amount(kv.Value), "");
+            if (ingots.Count > 0)
+                ColsW(0.16f, title, title, T("Razem", "Total"), "", "", "", total > 0 ? CalcTime(total) : "0");
+            if (anyUnknown) Text(T("? = żadna rafineria tutaj tego nie robi", "? = no refinery here makes this"), warn);
+            if (noRecipe.Count > 0) Text(T("Bez receptury: ", "No recipe: ") + string.Join(", ", noRecipe.Take(3)) + (noRecipe.Count > 3 ? " ..." : ""), warn);
+            if (asmEff > 1f) Text(T($"Montażownie x{asmEff:0.#} (mniej sztabek)", $"Assemblers x{asmEff:0.#} (fewer ingots)"), text);
+        }
+
+        class ProdWant { public VRage.Game.MyDefinitionId Id; public string Name; public double Current, Wanted; }
+
+        /// <summary>Lista autocraftingu: limity z Logistyki pluginu albo LCD Isy; filtr = fragmenty nazw po przecinku.</summary>
+        static List<ProdWant> ProductionWants(ElementCfg e, Ctx c, Dictionary<string, ItemAmount> items)
+        {
+            var res = new List<ProdWant>();
+            var parts = (e.Filter ?? "").Split(',').Select(p => p.Trim()).Where(p => p.Length > 0 && p != "*").ToList();
+            Func<string, VRage.Game.MyDefinitionId, bool> pass = (name, id) => parts.Count == 0 ||
+                parts.Any(p => (name ?? "").IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0 || id.SubtypeName.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0);
+            var m = Plugin.ActiveProfile?.Magazyn;
+            if (e.FromPlugin && m?.Quotas != null && m.Quotas.Any(q => q.Amount > 0))
+            {
+                foreach (var q in m.Quotas)
+                {
+                    if (q.Amount <= 0 || !VRage.Game.MyDefinitionId.TryParse(q.Id, out var id)) continue;
+                    string name = Ctx.ItemName(id);
+                    if (!pass(name, id)) continue;
+                    items.TryGetValue(q.Id, out var have);
+                    res.Add(new ProdWant { Id = id, Name = name, Current = Math.Floor(have?.Amount ?? 0), Wanted = q.Amount });
+                }
+                return res;
+            }
+            var list = c.Autocrafting(string.IsNullOrEmpty(e.Text) ? "Autocrafting" : e.Text);
+            if (list == null) return null;
+            foreach (var a in list)
+            {
+                if (!ItemIdByName(a.Name, out var id) || !pass(a.Name, id)) continue;
+                res.Add(new ProdWant { Id = id, Name = Ctx.GameName(a.Name), Current = a.Current, Wanted = a.Wanted });
+            }
+            return res;
+        }
+
+        static Dictionary<string, VRage.Game.MyDefinitionId> nameToId;
+
+        /// <summary>Nazwa z LCD Isy (podtyp, nazwa skryptu albo nazwa z gry) » Id przedmiotu.</summary>
+        static bool ItemIdByName(string name, out VRage.Game.MyDefinitionId id)
+        {
+            if (nameToId == null)
+            {
+                nameToId = new Dictionary<string, VRage.Game.MyDefinitionId>(StringComparer.OrdinalIgnoreCase);
+                try
+                {
+                    foreach (var def in Sandbox.Definitions.MyDefinitionManager.Static.GetAllDefinitions())
+                    {
+                        if (!(def is Sandbox.Definitions.MyPhysicalItemDefinition pd)) continue;
+                        string t = pd.Id.TypeId.ToString();
+                        if (t.EndsWith("_Ore") || t.EndsWith("_Ingot")) continue;
+                        foreach (var n in new[] { pd.Id.SubtypeName, Ctx.ItemName(pd.Id), pd.DisplayNameText })
+                            if (!string.IsNullOrEmpty(n) && !nameToId.ContainsKey(n)) nameToId[n] = pd.Id;
+                    }
+                }
+                catch { }
+            }
+            return nameToId.TryGetValue(name ?? "", out id);
+        }
+
+        /// <summary>Rozpisuje przedmiot na sztabki (części z części do 5 poziomów), z mnożnikiem montażowni świata.</summary>
+        static void Expand(VRage.Game.MyDefinitionId id, double amount, float asmEff, Dictionary<string, double> ingots,
+                           Dictionary<string, double> rawOre, HashSet<string> noRecipe, int depth)
+        {
+            if (amount <= 0) return;
+            var bp = Magazyn.BlueprintFor(id);
+            if (bp?.Prerequisites == null || bp.Results == null) { noRecipe.Add(Ctx.ItemName(id)); return; }
+            double per = 0;
+            foreach (var r in bp.Results) if (r.Id == id) per += (double)r.Amount;
+            if (per <= 0) per = 1;
+            double runs = amount / per;
+            foreach (var pre in bp.Prerequisites)
+            {
+                double need = runs * (double)pre.Amount / asmEff;
+                string t = pre.Id.TypeId.ToString();
+                if (t.EndsWith("_Ingot")) { ingots.TryGetValue(pre.Id.SubtypeName, out var v); ingots[pre.Id.SubtypeName] = v + need; }
+                else if (t.EndsWith("_Ore")) { rawOre.TryGetValue(pre.Id.SubtypeName, out var v); rawOre[pre.Id.SubtypeName] = v + need; }
+                else if (depth < 5) Expand(pre.Id, need * asmEff, asmEff, ingots, rawOre, noRecipe, depth + 1);
+                else noRecipe.Add(Ctx.ItemName(pre.Id));
+            }
+        }
+
+        /// <summary>Ruda dająca tę sztabkę w rafineriach grida: najpierw ruda o tej samej nazwie, potem jedyny produkt receptury.</summary>
+        static bool OreFor(string ingot, List<Ctx.RefineryCalcGroup> groups, out Ctx.RefineryCalcOre ore, out double resPerRun,
+                           out double sumSpeed, out double yield)
+        {
+            ore = null; resPerRun = 0; sumSpeed = 0; yield = 0;
+            for (int pass = 0; pass < 2 && ore == null; pass++)
+                foreach (var g in groups)
+                {
+                    foreach (var o in g.Ores)
+                    {
+                        bool ok = pass == 0 ? o.Ore == ingot && o.Results.Any(r => r.Key == ingot)
+                                            : o.Results.Count == 1 && o.Results[0].Key == ingot;
+                        if (!ok) continue;
+                        ore = o;
+                        resPerRun = o.Results.First(r => r.Key == ingot).Value;
+                        break;
+                    }
+                    if (ore != null) break;
+                }
+            if (ore == null) return false;
+            double sy = 0;
+            string oreName = ore.Ore;
+            foreach (var g in groups)
+                if (g.Ores.Any(o => o.Ore == oreName))
+                {
+                    sumSpeed += g.SumSpeed;
+                    sy += g.SumSpeedYield;
+                }
+            if (sumSpeed <= 0) return false;
+            yield = sy / sumSpeed;
+            return yield > 0;
+        }
+
         static string Ingots(Ctx.RefineryCalcOre o, double runs, double yield)
         {
-            if (o.Results.Count == 1) return Fmt.Mass(runs * o.Results[0].Value * yield);
-            return string.Join(" ", o.Results.Select(r => Fmt.Symbol(r.Key) + Fmt.Mass(runs * r.Value * yield)));
+            if (o.Results.Count == 1) return Fmt.Amount(runs * o.Results[0].Value * yield);
+            return string.Join(" ", o.Results.Select(r => Fmt.Symbol(r.Key) + Fmt.Amount(runs * r.Value * yield)));
         }
 
         void Queue(ElementCfg e, Ctx c)
@@ -562,11 +746,12 @@ namespace DaneHud
             var items = c.Items(false);
             // jak u Isy: wszystko, co da się zrobić w montażowni i jest w gridzie, + wszystko z limitem; bez limitu = 0
             var keys = new HashSet<string>(m.Quotas.Where(x => x.Amount > 0).Select(x => x.Id));
+            var craftable = Magazyn.Craftable(c);   // tylko to, co robią montażownie tego grida (bez Prototech, Zone Chip...)
             foreach (var kv in items)
             {
                 var it = kv.Value;
                 if (it == null || it.Amount <= 0 || it.Cat == ItemCat.Ore || it.Cat == ItemCat.Ingot) continue;
-                if (!VRage.Game.MyDefinitionId.TryParse(kv.Key, out var iid) || Magazyn.BlueprintFor(iid) == null) continue;
+                if (!craftable.Contains(kv.Key)) continue;
                 keys.Add(kv.Key);
             }
             var hidden = new HashSet<string>(m.Quotas.Where(x => x.Hide).Select(x => x.Id));
@@ -603,7 +788,7 @@ namespace DaneHud
             else if (!string.IsNullOrEmpty(g.PrimaryOre)) Pair(T("Rafinerie najpierw:", "Refining first:"), g.PrimaryOre);
             if (m.Autocraft && !string.IsNullOrEmpty(g.AsmWarning)) Text(g.AsmWarning, warn);
             if (g.Unreachable.Count > 0)
-                Text(T("Bez konwejera: ", "No conveyor: ") + string.Join(", ", g.Unreachable.Take(4)) + (g.Unreachable.Count > 4 ? " ..." : ""), warn);
+                Text(T("Bez konwejera: ", "No conveyor: ") + string.Join(", ", g.Unreachable.Take(2)) + (g.Unreachable.Count > 2 ? " ..." : ""), warn);
             for (int i = 0; i < Limit(e, g.Recent.Count); i++) Text("  " + g.Recent[i], text);
         }
 
@@ -807,7 +992,12 @@ namespace DaneHud
                     case ElementKind.PowerBalance: b.Pair(T("Produkcja prądu:", "Power output:"), "66.5 MW / 2.5 GW"); b.Pair(T("Silniki jonowe (24):", "Ion thrusters (24):"), "12 MW / 80 MW"); break;
                     case ElementKind.HydrogenBalance: b.Pair(T("Bilans wodoru:", "H2 balance:"), "-1.2 kL/s", b.warn); break;
                     case ElementKind.Thrust: b.Pair(T("Masa statku:", "Ship mass:"), "1.2 kt"); b.Pair(Ctx.DirNames[2] + ":", "24 MN  20 m/s²  2.04x"); break;
-                    case ElementKind.RefineryCalc: b.Pair("Elite Refinery", "x4  100%", b.title); b.Cols(b.text, b.title, "1 t", "1x", "6x"); b.Cols(b.text, b.value, "Fe", "700 kg 23s", "700 kg 3.9s"); break;
+                    case ElementKind.ProductionCalc:
+                    b.Pair("Steel Plate:", "1000 / 100000", b.value);
+                    b.Cols(b.text, b.title, T("Sztabka", "Ingot"), T("Brak", "Missing"), T("Ruda", "Ore"), T("Czas", "Time"));
+                    b.Cols(b.text, b.value, "Fe", "1.8 M", "2.6 M", "3h 12m");
+                    break;
+                case ElementKind.RefineryCalc: b.Pair("Elite Refinery", "x4  100%", b.title); b.Cols(b.text, b.title, "1 t", "1x", "6x"); b.Cols(b.text, b.value, "Fe", "700 23s", "700 3.9s"); break;
                     case ElementKind.Refineries: b.Pair(T("10x Rafinerie  5h 12m", "10x Refineries  5h 12m"), "U Ag Si Ni"); break;
                     case ElementKind.Autocrafting:
                         b.Pair("SteelPlate", "200372 > 200000"); b.Pair("Motor", "1200 < 5000", b.warn); break;

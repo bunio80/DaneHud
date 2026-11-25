@@ -42,6 +42,7 @@ namespace DaneHud
         Queue,           // kolejka montażowni
         Magazyn,         // stan modułu Magazyn (zamiast Isy)
         RefineryCalc,    // kalkulator rafinerii: ile sztabek i w jakim czasie z podanej ilości rudy
+        ProductionCalc,  // kalkulator produkcji: braki z autocraftingu » sztabki » ruda » czas rafinerii
     }
 
     public enum ItemCat { Ore, Ingot, Component, Ammo, Tool, Bottle, Consumable, Other, All }
@@ -108,6 +109,7 @@ namespace DaneHud
                 case ElementKind.Queue: e.Filter = "*"; e.MaxLines = 10; break;
                 case ElementKind.Magazyn: e.MaxLines = 5; break;
                 case ElementKind.RefineryCalc: e.Quota = 1000; e.Filter = "*"; break;
+                case ElementKind.ProductionCalc: e.Filter = "*"; e.MaxLines = 5; e.Each = true; e.FromPlugin = true; e.Text = "Autocrafting"; break;
             }
             return e;
         }
@@ -118,7 +120,7 @@ namespace DaneHud
             ElementKind.Header, ElementKind.Blank, ElementKind.Items, ElementKind.CargoBar, ElementKind.Tank, ElementKind.Amount,
             ElementKind.PowerSummary, ElementKind.PowerTime, ElementKind.PowerDetails, ElementKind.PowerBalance, ElementKind.PowerUsed,
             ElementKind.Charge, ElementKind.HydrogenBalance, ElementKind.Oxygen, ElementKind.Thrust, ElementKind.Ship, ElementKind.Docked,
-            ElementKind.Refineries, ElementKind.RefineryCalc, ElementKind.Queue, ElementKind.Autocrafting, ElementKind.Magazyn, ElementKind.Working, ElementKind.Count, ElementKind.Damage,
+            ElementKind.Refineries, ElementKind.RefineryCalc, ElementKind.ProductionCalc, ElementKind.Queue, ElementKind.Autocrafting, ElementKind.Magazyn, ElementKind.Working, ElementKind.Count, ElementKind.Damage,
             ElementKind.Details, ElementKind.CustomData, ElementKind.Property, ElementKind.LcdText, ElementKind.Clock, ElementKind.Distance,
         };
 
@@ -157,6 +159,7 @@ namespace DaneHud
                 case ElementKind.Queue: return L.T("Kolejka montażowni", "Assembler queue");
                 case ElementKind.Magazyn: return L.T("Logistyka: stan i ostatnie ruchy", "Logistics: status and recent moves");
                 case ElementKind.RefineryCalc: return L.T("Rafinerie: kalkulator (ruda » sztabki, czas)", "Refineries: calculator (ore » ingots, time)");
+                case ElementKind.ProductionCalc: return L.T("Kalkulator produkcji (autocrafting » sztabki » ruda)", "Production calculator (autocrafting » ingots » ore)");
             }
             return k.ToString();
         }
@@ -193,7 +196,8 @@ namespace DaneHud
                 case ElementKind.LcdText: return s + ": [" + Text + "]";
                 case ElementKind.Details: return s + f + (string.IsNullOrEmpty(StartText) ? "" : " {" + StartText + "}") + (MaxLines > 0 ? " " + MaxLines : "");
                 case ElementKind.Property: return s + f + " " + Property;
-                case ElementKind.RefineryCalc: return s + ": " + (FromStock ? L.T("ruda w bazie", "ore in base") : Fmt.Mass(Quota)) + (Hidden.Count > 0 ? L.T($" (ukryte rudy {Hidden.Count})", $" ({Hidden.Count} ores hidden)") : "");
+                case ElementKind.ProductionCalc: return s + ": " + (string.IsNullOrWhiteSpace(Filter) || Filter.Trim() == "*" ? L.T("wszystkie braki", "all shortages") : Filter);
+                case ElementKind.RefineryCalc: return s + ": " + (FromStock ? L.T("ruda w bazie", "ore in base") : Fmt.Amount(Quota)) + (Hidden.Count > 0 ? L.T($" (ukryte rudy {Hidden.Count})", $" ({Hidden.Count} ores hidden)") : "");
                 case ElementKind.Clock:
                 case ElementKind.Distance: return s + ": " + Text;
                 case ElementKind.CustomData:
@@ -515,9 +519,20 @@ namespace DaneHud
             catch { return false; }
         }
 
-        static string FilePath => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "SpaceEngineers", "Plugins", TestRun ? "DaneHud_test.xml" : "DaneHud.xml");
+        /// <summary>Folder Plugins w danych gry (MyFileSystem.UserDataPath — szanuje -appdata i Linuksa).</summary>
+        internal static string PluginsDir
+        {
+            get
+            {
+                string root = null;
+                try { root = VRage.FileSystem.MyFileSystem.UserDataPath; } catch { }
+                if (string.IsNullOrEmpty(root))
+                    root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SpaceEngineers");
+                return Path.Combine(root, "Plugins");
+            }
+        }
+
+        static string FilePath => Path.Combine(PluginsDir, TestRun ? "DaneHud_test.xml" : "DaneHud.xml");
 
         public static Config Load()
         {

@@ -120,8 +120,11 @@ namespace DaneHud
         int addIdx = 2;                 // pozycja w ElementCfg.AddOrder
         int loadIdx = 0;
 
+        internal static MainScreen Open;
+
         public MainScreen(Config cfg) : base(new Vector2(0.95f, 0.97f), 0.96f)
         {
+            Open = this;
             this.cfg = cfg;
             EnabledBackgroundFade = true;
 
@@ -384,6 +387,7 @@ namespace DaneHud
 
         protected override void OnClosed()
         {
+            if (ReferenceEquals(Open, this)) Open = null;   // v26
             cfg.Save();     // zmiany działają od razu, więc zamknięcie X też zapisuje
             Plugin.Dirty = true;
             base.OnClosed();
@@ -789,7 +793,7 @@ namespace DaneHud
                     if (!e.FromStock)
                     {
                         var amounts = new double[] { 1, 10, 100, 1000, 10000, 100000, 1000000 };
-                        var names = amounts.Select(v => Fmt.Mass(v)).ToList();
+                        var names = amounts.Select(v => Fmt.Amount(v)).ToList();
                         int cur = Array.IndexOf(amounts, e.Quota);
                         Label(x, y, T("Ilość rudy:", "Ore amount:")); Combo(vx, y, 0.14f, names, cur < 0 ? 3 : cur, v => { e.Quota = amounts[v]; RecreateControls(false); });
                         Number(vx + 0.16f, y, 0.12f, e.Quota, v => e.Quota = Math.Max(0, v)); y += row;
@@ -818,6 +822,27 @@ namespace DaneHud
                     Button(x + 0.27f, y + 0.005f, T("Żadna", "None"), () => { e.Hidden.Clear(); e.Hidden.AddRange(ores); RecreateControls(false); }, 0.16f, 0.036f);
                     y += row;
                     Hint(T("Kolumny: sztabki i czas dla 1 rafinerii i dla wszystkich danego rodzaju razem.", "Columns: ingots and time for 1 refinery and for all of that kind together."));
+                    break;
+                }
+
+                case ElementKind.ProductionCalc:
+                {
+                    C(T("Limity z Logistyki pluginu (inaczej LCD Isy)", "Limits from plugin Logistics (else Isy LCD)"), e.FromPlugin, v => { e.FromPlugin = v; RecreateControls(false); });
+                    if (!e.FromPlugin) { Label(x, y, T("Słowo w nazwie LCD:", "Word in LCD name:")); TextBox(vx, y, w, e.Text, 60, v => e.Text = v); y += row; }
+                    Label(x, y, T("Przedmioty:", "Items:")); TextBox(vx, y, w, e.Filter, 120, v => e.Filter = v); y += row;
+                    Hint(T("* = wszystkie braki; albo fragmenty nazw po przecinku, np. Steel, Motor.", "* = all shortages; or name parts separated by commas, e.g. Steel, Motor."));
+                    C(T("Pokaż każdy przedmiot (stan / limit / brak)", "Show each item (stock / limit / short)"), e.Each, v => { e.Each = v; RecreateControls(false); });
+                    if (e.Each) LinesBox(T("Ile przedmiotów (0 = wszystkie):", "How many items (0 = all):"));
+                    Label(x, y, T("Liczone rafinerie:", "Refineries used:")); y += row * 0.9f;
+                    var kinds = Ctx.RefineryKinds();
+                    for (int k = 0; k < kinds.Count; k++)
+                    {
+                        string id = kinds[k].Key;
+                        Check(x + (k % 2) * 0.3f, y, kinds[k].Value, !e.HiddenKinds.Contains(id), v => { e.HiddenKinds.Remove(id); if (!v) e.HiddenKinds.Add(id); });
+                        if (k % 2 == 1 || k == kinds.Count - 1) y += row * 0.85f;
+                    }
+                    Hint(T("Brak = limit - stan, rozpisany na sztabki (minus sztabki w bazie), rudę i czas", "Missing = limit - stock, broken into ingots (minus ingots in base), ore and time"));
+                    Hint(T("przy obecnych rafineriach z modułami. Czerwona ruda = za mało w bazie.", "with the current refineries and modules. Red ore = not enough in base."));
                     break;
                 }
 

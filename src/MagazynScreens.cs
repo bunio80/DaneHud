@@ -61,7 +61,7 @@ namespace DaneHud
 
             // --- rafinerie
             Check(x, y, T("Rafinerie: każda ruda po równo we wszystkich", "Refineries: every ore split equally"), m.Refineries, v => m.Refineries = v); y += row * 0.8f;
-            Label(x + 0.035f, y, T("Na czas pracy rafinerie nie pobierają rudy z konwejera; gdy wstaniesz — pobierają znowu.", "While running, refineries don't pull ore themselves; when you stand up they do again."), 0.62f); y += row * 0.8f;
+            Label(x + 0.035f, y, T("Na czas pracy rafinerie nie pobierają rudy z konwejera; po wstaniu albo wyjściu ze świata pobierają znowu (po crashu gry — dopiero po następnym wstaniu).", "While running, refineries don't pull ore themselves; they do again when you stand up or leave the world (after a game crash: only after you next stand up)."), 0.62f); y += row * 0.8f;
             Label(x + 0.035f, y, T("Kolejność rud:", "Ore order:"), 0.7f);
             string order = string.IsNullOrWhiteSpace(m.OrePriority) ? T("(brak — po równo wg ilości)", "(none — by amount)") : m.OrePriority;
             Button(x + 0.4f, y, order + "  ...", () => MyGuiSandbox.AddScreen(new OrePriorityScreen(m, () => RecreateControls(false))), 0.42f); y += row;
@@ -120,7 +120,7 @@ namespace DaneHud
             if (!string.IsNullOrEmpty(mg.Warning)) { var l = Label(x, y, mg.Warning, 0.7f); l.ColorMask = new Vector4(1f, 0.35f, 0.35f, 1f); y += row * 0.8f; }
             if (mg.Unreachable.Count > 0)
             {
-                var l2 = Label(x, y, T("Bez połączenia konwejerem (nie da się przenieść): ", "Not connected by conveyor (cannot move): ") + string.Join(", ", mg.Unreachable.Take(5)), 0.64f);
+                var l2 = Label(x, y, T("Bez połączenia konwejerem (skąd » dokąd): ", "Not connected by conveyor (from » to): ") + string.Join(", ", mg.Unreachable.Take(5)), 0.64f);
                 l2.ColorMask = new Vector4(1f, 0.6f, 0.3f, 1f); y += row * 0.7f;
             }
             foreach (var r in mg.Recent.Take(2)) { Label(x, y, r, 0.6f); y += row * 0.6f; }
