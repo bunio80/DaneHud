@@ -71,6 +71,34 @@ clock, distance to a GPS, any terminal property, `Details` and Custom Data of an
 
 All amounts use the same units as the item lists (`13.3 k`, `1.2 M`).
 
+#### The calculators in the game
+
+![Calculators on the HUD](docs/img/hud_calculators.png)
+
+**Production calculator**
+
+![Production calculator](docs/img/calc_production.png)
+
+- **Top lines:** each item autocrafting still has to make: stock / limit and how many are missing (`460 / 500 -40`).
+- **Ingot / Needed:** the ingots all those missing items need, broken down to ingots.
+- **Missing:** what is left after the ingots already in the base. `0` means you have enough.
+- **Ore / Time:** the ore to refine for the missing ingots and how long your refineries take for it.
+  Here cobalt is short by 1.9 k ingots, which is 5.9 k ore and about 3 minutes. The row is red because
+  the base has less cobalt ore than that.
+- **Total:** the refinery time for everything that is missing.
+- **Assemblers x3:** the server's assembler efficiency. It is already included, so fewer ingots are needed.
+
+**Refinery calculator**
+
+![Refinery calculator](docs/img/calc_refinery.png)
+
+- **Header:** the refinery type, its speed with modules and the server multiplier (`x14.83`) and its yield (`105%`).
+- **Ore in base:** each ore and how much of it the base holds. You can also pick a fixed amount instead,
+  from 1 to 1 M.
+- **1x / time:** the ingots and the time for one refinery.
+- **6x / time:** the same for all 6 refineries of that type working together.
+- **Total:** how long it takes to refine all of that ore.
+
 ### 2. Logistics
 
 This part takes over the work of a typical inventory script. It runs inside the plugin while you sit in the grid.
@@ -186,6 +214,14 @@ oraz tekst dowolnego LCD. `Details` potrafi wybrać linie po tekście, np. `CapH
   z modułami prędkości i uzysku. Może też policzyć rudę, którą masz w bazie, i podać łączny czas.
   Rodzaje rafinerii i rudy wybierasz checkboxami.
 - **Rafinerie w jednej linii:** ile rafinerii, ile czasu do końca i rudy w kolejności przetapiania.
+- **Jak czytać kalkulatory** (zrzuty są w części angielskiej, „The calculators in the game”):
+  - kalkulator produkcji: górne linie to przedmioty z autocraftingu (stan / limit, brak). Dalej Ingot = sztabka,
+    Needed = ile potrzeba, Missing = ile brakuje po odjęciu sztabek z bazy, Ore = ile rudy przetopić,
+    Time = czas w rafineriach. Czerwony wiersz oznacza, że rudy jest za mało. „Assemblers x3” to mnożnik
+    montażowni serwera, już uwzględniony;
+  - kalkulator rafinerii: nagłówek to rodzaj rafinerii, prędkość z modułami (`x14.83`) i uzysk (`105%`).
+    Kolumny „1x / time” to sztabki i czas dla jednej rafinerii, a „6x / time” dla wszystkich sześciu razem.
+    Total to czas przerobienia całej rudy.
 - **Autocrafting na HUD:** stan i limit każdego przedmiotu (z limitów pluginu albo z LCD skryptu magazynowego).
   Pokazuje tylko to, co potrafią zrobić Twoje montażownie, może pokazywać same braki i dzielić listę na kilka okien.
 - **Stan Logistyki:** co robi Logistyka, ostatnie ruchy i ostrzeżenia: kolejka montażowni, która stoi
