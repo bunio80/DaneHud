@@ -135,6 +135,11 @@ base works without renaming anything.
 | ![Autocrafting limits](docs/img/menu_limits.png) | ![Ore order](docs/img/menu_ore_order.png) |
 | ![Window position and size](docs/img/menu_layout.png) | ![Window templates](docs/img/menu_templates.png) |
 
+**Per-grid profile:** a mining ship gets its own small set of windows (clock, iron ore, power against thrusters).
+It appears by itself when you sit in the miner, while the base keeps its large set.
+
+![Mining ship profile](docs/img/hud_miner_profile.png)
+
 ### How to use
 
 1. Enable **Grid HUD & Logistics** in Pulsar and start the game.
@@ -262,7 +267,8 @@ więc istniejąca baza działa bez zmiany nazw.
 
 ### Zrzuty ekranu
 
-Są wyżej, w części angielskiej.
+Są wyżej, w części angielskiej. Ostatni pokazuje profil koparki: własny, mały zestaw okien (zegar, ruda żelaza,
+prąd kontra silniki), który pojawia się sam, gdy siadasz w koparce, a baza ma swój duży zestaw.
 
 ### Jak używać
 
