@@ -4,6 +4,8 @@
 The HUD windows need no LCDs or scripts. Logistics runs inside the plugin, and an optional small PB script keeps refineries working 24/7.
 A [Pulsar](https://github.com/SpaceGT/Pulsar) plugin for Space Engineers (Legacy).
 
+**Start:** after enabling it, sit in a cockpit and type **`/data`** in chat to add windows and switch on Logistics. See [How to use](#how-to-use) · [Jak używać](#jak-używać).
+
 [English](#english) · [Polski](#polski)
 
 ![HUD](docs/img/hud_main.png)
