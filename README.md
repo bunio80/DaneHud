@@ -28,6 +28,7 @@ This part replaces Automatic LCDs 2 + HudLcd.
   Text styles: normal, bold, extra bold, outline and shadow.
 - **Window placement with a live view:** while you move or resize a window, the game, its HUD and your
   other windows stay visible.
+- **Windows grow downward:** the top edge stays where you put it, so a window that gets longer or shorter never moves your layout.
 - **Per-grid profiles.** Your base, your miner and your ship each get their own windows. The right set appears
   when you sit down.
 - **Named templates** of window sets, which you can load into any grid.
@@ -153,6 +154,7 @@ Ta część zastępuje Automatic LCDs 2 + HudLcd.
 - Dowolna liczba okien. Każdemu ustawiasz położenie, rozmiar, tło, kolory i styl tekstu.
   Style tekstu: zwykły, pogrubiony, bardzo gruby, obrys i cień.
 - **Ustawianie okna z podglądem:** gdy przesuwasz albo zmieniasz rozmiar okna, widać grę, jej HUD i pozostałe okna.
+- **Okna rosną w dół:** górna krawędź zostaje tam, gdzie ją ustawisz, więc okno, które się wydłuża albo skraca, nie psuje ułożenia.
 - **Profile gridów.** Baza, koparka i statek mają osobne okna. Właściwy zestaw pojawia się, gdy siadasz.
 - **Nazwane szablony** zestawów okien, które wczytasz do dowolnego grida.
 - Język polski i angielski.

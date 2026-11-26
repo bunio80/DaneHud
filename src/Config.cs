@@ -224,6 +224,9 @@ namespace DaneHud
         public string Title = "";
         public float X = 0f;           // % (0 = lewa krawędź ekranu, 100 = prawa)
         public float Y = 0f;           // % (0 = góra, 100 = dół)
+        /// <summary>v32: Y = położenie GÓRNEJ krawędzi (okno rośnie w dół). Stare okna (false): Y = ułamek wolnego miejsca,
+        /// przeliczane przy pierwszym rysowaniu tak, żeby górna krawędź została tam, gdzie jest.</summary>
+        public bool TopEdge = false;
         public float Width = 0.22f;    // szerokość okna (jednostki GUI)
         public float Scale = 0.62f;    // wielkość czcionki
         public float LineSpacing = 1f; // odstęp wierszy (mnożnik)

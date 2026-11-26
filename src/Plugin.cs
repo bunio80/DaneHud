@@ -23,7 +23,7 @@ namespace DaneHud
 
     public class Plugin : IPlugin
     {
-        internal const string Version = "30";
+        internal const string Version = "32";
         internal static Config Cfg;
         internal static volatile Snapshot Shown;      // okna i wiersze do narysowania (null = nic)
         internal static bool Seated;
@@ -89,6 +89,7 @@ namespace DaneHud
                 try { overlay = new Overlay(); MyGuiSandbox.AddScreen(overlay); } catch (Exception e) { Log("overlay: " + e); overlay = null; }
             }
 
+            if (Render.NeedSave) { Render.NeedSave = false; try { Cfg.Save(); } catch (Exception e) { Log("save: " + e); } }
             if (++tick % Math.Max(10, Cfg.RefreshTicks) == 0 || Dirty) Refresh();
         }
 

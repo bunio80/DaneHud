@@ -429,7 +429,7 @@ namespace DaneHud
             const float x = -0.25f, sx = -0.03f, sw = 0.27f, row = 0.045f;
             float y = -0.13f;
             Label(x, y, T("Poziomo (0 lewo, 100 prawo)", "Horizontal (0 left, 100 right)")); Slider(sx, y, sw, 0, 100, w.X, "{0} %", 0, v => w.X = (float)Math.Round(v)); y += row;
-            Label(x, y, T("Pionowo (0 góra, 100 dół)", "Vertical (0 top, 100 bottom)")); Slider(sx, y, sw, 0, 100, w.Y, "{0} %", 0, v => w.Y = (float)Math.Round(v)); y += row;
+            Label(x, y, T("Górna krawędź (0 góra, 100 dół)", "Top edge (0 top, 100 bottom)")); Slider(sx, y, sw, 0, 100, w.Y, "{0} %", 0, v => w.Y = (float)Math.Round(v)); y += row;
             Label(x, y, T("Szerokość okna", "Window width")); Slider(sx, y, sw, 8, 70, w.Width * 100f, "{0}", 0, v => w.Width = (float)Math.Round(v) / 100f); y += row;
             Label(x, y, T("Wielkość czcionki", "Font size")); Slider(sx, y, sw, 30, 130, w.Scale * 100f, "{0}", 0, v => w.Scale = (float)Math.Round(v) / 100f); y += row;
             Label(x, y, T("Odstęp wierszy", "Line spacing")); Slider(sx, y, sw, 60, 160, w.LineSpacing * 100f, "{0} %", 0, v => w.LineSpacing = (float)Math.Round(v) / 100f); y += row;
@@ -440,7 +440,7 @@ namespace DaneHud
             Button(0f, 0.175f, T("Domyślne", "Defaults"), () =>
             {
                 var d = WindowCfg.Default(idx);
-                w.X = d.X; w.Y = d.Y; w.Width = d.Width; w.Scale = d.Scale; w.LineSpacing = d.LineSpacing; w.BgAlpha = d.BgAlpha;
+                w.X = d.X; w.Y = d.Y; w.TopEdge = d.TopEdge; w.Width = d.Width; w.Scale = d.Scale; w.LineSpacing = d.LineSpacing; w.BgAlpha = d.BgAlpha;
                 RecreateControls(false);
             });
             Button(0.19f, 0.175f, T("Zapisz", "Save"), () => { saved = true; cfg.Save(); CloseScreen(false); }, 0.16f);
@@ -472,7 +472,7 @@ namespace DaneHud
             owner?.HideForLayout(false);
             if (!saved)
             {
-                w.X = backup.X; w.Y = backup.Y; w.Width = backup.Width; w.Scale = backup.Scale;
+                w.X = backup.X; w.Y = backup.Y; w.TopEdge = backup.TopEdge; w.Width = backup.Width; w.Scale = backup.Scale;
                 w.LineSpacing = backup.LineSpacing; w.BgAlpha = backup.BgAlpha;
             }
             Plugin.Dirty = true;

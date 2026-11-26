@@ -112,6 +112,9 @@ namespace DaneHud
             MyGuiManager.DrawString(font, s, p, scale, c, a, full, maxW);
         }
 
+        /// <summary>v32: któreś okno przeliczone na górną krawędź — Plugin zapisze ustawienia w Update.</summary>
+        internal static volatile bool NeedSave;
+
         public static void Draw(WindowCfg w, List<Row> rows)
         {
             if (rows == null) return;
@@ -132,7 +135,18 @@ namespace DaneHud
             float left = ScreenLeft, right = 1f - left;
             float x = left + Math.Max(0f, right - left - width) * Clamp(w.X, 0f, 100f) / 100f;
             float top = 0.005f, bottom = 0.995f;
-            float y = top + Math.Max(0f, bottom - top - height) * Clamp(w.Y, 0f, 100f) / 100f;
+            float y;
+            if (!w.TopEdge)
+            {
+                // stare ustawienie: przelicz raz na górną krawędź przy obecnej wysokości (okno nie przeskakuje)
+                y = top + Math.Max(0f, bottom - top - height) * Clamp(w.Y, 0f, 100f) / 100f;
+                w.Y = (y - top) / (bottom - top) * 100f;
+                w.TopEdge = true;
+                NeedSave = true;
+            }
+            // górna krawędź stała, nowe wiersze wydłużają okno w dół; dopiero przy dolnej krawędzi ekranu okno się podnosi
+            y = top + (bottom - top) * Clamp(w.Y, 0f, 100f) / 100f;
+            if (y + height > bottom) y = Math.Max(top, bottom - height);
 
             if (w.BgAlpha > 0)
             {

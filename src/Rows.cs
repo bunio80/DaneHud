@@ -495,7 +495,7 @@ namespace DaneHud
             var groups = c.RefineryCalc(e.Filter, e.HiddenKinds);
             if (groups.Count == 0) { Text(T("Rafinerie: brak", "Refineries: none"), text); return; }
             Dictionary<string, ItemAmount> stock = e.FromStock ? c.Items(false) : null;
-            float firstW = e.FromStock ? 0.3f : 0f;
+            float firstW = e.FromStock ? 0.26f : 0.12f;
             bool firstGroup = true;
             foreach (var g in groups)
             {
@@ -505,8 +505,9 @@ namespace DaneHud
                 // nazwa bloku (też z modów), średnia prędkość i uzysk z modułami
                 Pair(g.Name, "x" + g.Speed.ToString("0.##", CultureInfo.InvariantCulture) + "  " + Math.Round(g.Yield * 100) + "%", title);
                 string head = e.FromStock ? T("Ruda w bazie", "Ore in base") : Fmt.Amount(fixedOre);
-                if (many) ColsW(firstW, text, title, head, "1x", g.Count + "x");
-                else ColsW(firstW, text, title, head, "1x");
+                string tm = T("czas", "time");
+                if (many) ColsW(firstW, text, title, head, "1x", tm, g.Count + "x", tm);
+                else ColsW(firstW, text, title, head, "1x", tm);
                 double sumOne = 0, sumAll = 0;
                 int lines = 0, shown = 0;
                 foreach (var o in g.Ores)
@@ -527,16 +528,15 @@ namespace DaneHud
                     if (e.MaxLines > 0 && lines >= e.MaxLines) continue;
                     lines++;
                     string label = Fmt.Symbol(o.Ore) + (stock != null ? "  " + Fmt.Amount(ore) : "");
-                    string one = Ingots(o, runs, g.Yield) + " " + CalcTime(tOne);
-                    if (many) ColsW(firstW, text, value, label, one, Ingots(o, runs, g.AllYield) + " " + CalcTime(tAll));
-                    else ColsW(firstW, text, value, label, one);
+                    if (many) ColsW(firstW, text, value, label, Ingots(o, runs, g.Yield), CalcTime(tOne), Ingots(o, runs, g.AllYield), CalcTime(tAll));
+                    else ColsW(firstW, text, value, label, Ingots(o, runs, g.Yield), CalcTime(tOne));
                 }
                 if (shown == 0) { Text(e.FromStock ? T("  brak rudy w bazie", "  no ore in base") : T("  brak wybranych rud", "  no ores selected"), warn); continue; }
                 if (e.FromStock)
                 {
                     // suma czasu wszystkich rud z bazy
-                    if (many) ColsW(firstW, title, title, T("Razem", "Total"), CalcTime(sumOne), CalcTime(sumAll));
-                    else ColsW(firstW, title, title, T("Razem", "Total"), CalcTime(sumOne));
+                    if (many) ColsW(firstW, title, title, T("Razem", "Total"), "", CalcTime(sumOne), "", CalcTime(sumAll));
+                    else ColsW(firstW, title, title, T("Razem", "Total"), "", CalcTime(sumOne));
                 }
             }
         }
@@ -997,7 +997,7 @@ namespace DaneHud
                     b.Cols(b.text, b.title, T("Sztabka", "Ingot"), T("Brak", "Missing"), T("Ruda", "Ore"), T("Czas", "Time"));
                     b.Cols(b.text, b.value, "Fe", "1.8 M", "2.6 M", "3h 12m");
                     break;
-                case ElementKind.RefineryCalc: b.Pair("Elite Refinery", "x4  100%", b.title); b.Cols(b.text, b.title, "1 t", "1x", "6x"); b.Cols(b.text, b.value, "Fe", "700 23s", "700 3.9s"); break;
+                case ElementKind.RefineryCalc: b.Pair("Elite Refinery", "x4  100%", b.title); b.Cols(b.text, b.title, "1 k", "1x", T("czas", "time"), "6x", T("czas", "time")); b.Cols(b.text, b.value, "Fe", "700", "23s", "700", "3.9s"); break;
                     case ElementKind.Refineries: b.Pair(T("10x Rafinerie  5h 12m", "10x Refineries  5h 12m"), "U Ag Si Ni"); break;
                     case ElementKind.Autocrafting:
                         b.Pair("SteelPlate", "200372 > 200000"); b.Pair("Motor", "1200 < 5000", b.warn); break;
